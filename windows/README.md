@@ -113,6 +113,19 @@ The five capture fields are reserved internal model defaults, not visible contro
 
 The solution targets `net10.0-windows` and requires the .NET 10 SDK.
 
+For the shortest path, double-click `clicky.bat` in the repository root. It
+builds the Release configuration and launches Clicky. The same launcher also
+works from PowerShell:
+
+```powershell
+.\clicky.bat          # Build and run
+.\clicky.bat build    # Build only
+.\clicky.bat test     # Run the test suite
+```
+
+The launcher automatically uses the repository-local `.dotnet` SDK when it is
+available and falls back to the system `dotnet` command.
+
 From the repository root:
 
 ```powershell
