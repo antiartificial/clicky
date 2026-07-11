@@ -41,6 +41,11 @@ public sealed class PointCuePresenter : IPointCuePresenter
                 nameof(options),
                 "Auto-hide duration must be greater than zero, or null to disable auto-hide.");
         }
+
+        if (this.options.MotionEnabled is null)
+        {
+            throw new ArgumentException("Motion-enabled callback cannot be null.", nameof(options));
+        }
     }
 
     public Task ShowAsync(
@@ -102,7 +107,7 @@ public sealed class PointCuePresenter : IPointCuePresenter
         var monitor = monitorProvider.GetMonitorContaining(point);
         var layout = PointCueLayoutCalculator.Calculate(point, monitor, label is not null);
         window ??= new PointCueWindow();
-        window.ShowCue(layout, label, options.ReducedMotion);
+        window.ShowCue(layout, label, options.ShouldUseMotion());
 
         var generation = ++displayGeneration;
         if (options.AutoHideAfter is { } autoHideAfter)

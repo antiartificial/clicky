@@ -1,6 +1,6 @@
 # Clicky for Windows
 
-`windows/` contains the Clicky Windows prototype: a .NET 10 WPF visual guide for typed, screenshot-grounded questions about any active desktop application. It can help with the interface currently visible in an Adobe app, Visual Studio, Rive, a browser, or another desktop tool; these are examples, not built-in integrations. Clicky can use the repository's existing Cloudflare Worker or connect directly to Anthropic or OpenAI with a key stored in Windows Credential Manager. It does not yet implement the macOS voice pipeline.
+`windows/` contains the Clicky Windows prototype: a .NET 10 WPF visual guide for typed or foot-pedal voice questions about any active desktop application. It can help with the interface currently visible in an Adobe app, Visual Studio, Rive, a browser, or another desktop tool; these are examples, not built-in integrations. Clicky can use the repository's existing Cloudflare Worker or connect directly to Anthropic or OpenAI with a key stored in Windows Credential Manager. Windows voice input uses local `System.Speech` dictation rather than the macOS transcription pipeline.
 
 For the component-level design, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -8,6 +8,7 @@ For the component-level design, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 - A compact, topmost companion window and a Windows notification-area tray shell.
 - A typed-question flow that preserves the active application's context. The companion is non-activating while idle; clicking the primary action captures the foreground window first, then activates Clicky and focuses the question box.
+- A global, configurable F13-F24 foot-pedal shortcut, default F13. Pressing the pedal starts local Windows dictation and prepares the active-window capture; releasing it finalizes the transcript and processes the question through the provider selected in Settings.
 - Active-window JPEG capture using Windows/DWM bounds and GDI `CopyFromScreen`.
 - A default-on **Optimize large captures** setting. Images at or below 1920x1080 remain full size; if either dimension is larger, both encoded dimensions are reduced to exactly half scale (with odd dimensions rounded up), encoded at JPEG quality 88, and mapped against the unchanged physical window bounds. Capture work runs off the UI thread and rejects source windows above a 40-million-pixel safety ceiling before bitmap allocation.
 - Three AI modes selected in Settings: Cloudflare Worker, direct Anthropic, and direct OpenAI.
@@ -15,11 +16,11 @@ For the component-level design, see [ARCHITECTURE.md](ARCHITECTURE.md).
 - Provider-specific model IDs, with `claude-sonnet-4-6` as the Anthropic default and `gpt-5.4-mini` as the OpenAI default.
 - Direct-provider key storage in Windows Credential Manager, with masked entry plus save, replace, status, and remove controls.
 - A generic `VisualGuideTutor` prompt that treats the active-window title and screenshot as authoritative, teaches one visible action at a time, defines unfamiliar interface terms, avoids inventing controls, asks for clarification when uncertain, and requires one terminal `[POINT:...]` directive.
-- Terminal `POINT` parsing, capture-pixel to physical-desktop coordinate mapping, and a labeled, click-through, non-activating topmost cue overlay.
+- Terminal `POINT` parsing, capture-pixel to physical-desktop coordinate mapping, and a labeled, click-through, non-activating topmost cue overlay. Cue motion is on by default and runs only when both Clicky's motion toggle and the Windows reduced-motion preference allow it. The real mouse pointer is never moved.
 - In-memory conversation history capped at 10 turns. Changing provider cancels prepared work and clears that history.
 - Embedded `Clicky.png` and `Clicky.ico` assets used by the companion, startup splash, tray icon, and executable.
 - A reduced-motion-aware, non-activating startup splash with a nominal 1.35-second logo/focus-ring animation. Startup is currently silent.
-- Unit tests for provider routing, key management, request serialization, SSE parsing, settings, state transitions, capture contracts, tutor interactions, `POINT` mapping, window placement, view-model behavior, and overlay presentation.
+- Unit tests for provider routing, key management, request serialization, SSE parsing, settings, state transitions, pedal transitions, capture contracts, tutor interactions, `POINT` mapping, cue motion, window placement, view-model behavior, and overlay presentation.
 
 ## Interaction flow
 
@@ -32,6 +33,8 @@ For the component-level design, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Escape cancels the current interaction. Closing the companion hides it; the tray menu can show it, open Settings, or quit Clicky.
 
+For voice input, configure the **Foot pedal key** in Settings (`F13` by default). Pressing it globally starts listening with local Windows `System.Speech` dictation while Clicky prepares the active-window capture. Releasing it finalizes the transcript and processes it through the selected Worker, Anthropic, or OpenAI chat provider. Windows must have a recognition language installed and a usable default microphone configured.
+
 ## Choose an AI provider
 
 Open Settings with the gear button or the tray menu, then select one mode:
@@ -42,7 +45,7 @@ Open Settings with the gear button or the tray menu, then select one mode:
 | Anthropic | Keep or edit the model ID, then store an Anthropic API key. | Fixed `https://api.anthropic.com/v1/messages` |
 | OpenAI | Keep or edit the model ID, then store an OpenAI API key. | Fixed `https://api.openai.com/v1/responses` |
 
-Worker is selected when the app starts. Provider selection, Worker URL, and model edits are currently held in memory and return to their defaults after restart. Saved Anthropic and OpenAI keys remain in Windows Credential Manager until removed.
+Worker is selected when the app starts. All non-secret settings, including provider selection, Worker URL, model IDs, motion, and pedal key, are held in memory and return to their defaults after restart. Saved Anthropic and OpenAI keys remain in Windows Credential Manager until removed.
 
 Changing provider deliberately cancels any captured-but-not-submitted question and clears the in-memory conversation history. A request also snapshots its provider before streaming starts, so it cannot jump providers midway through a response.
 
@@ -90,7 +93,7 @@ The production Worker client also disables redirects. Combined with the HTTPS-on
 
 ## Privacy and capture scope
 
-The visible settings surface includes provider configuration, a noninteractive capture-scope row showing `Active window`, and the default-on **Optimize large captures** toggle.
+The visible settings surface includes provider configuration, the default-on **Motion** toggle, an F13-F24 **Foot pedal key** selector, a noninteractive capture-scope row showing `Active window`, and the default-on **Optimize large captures** toggle.
 
 Optimization is applied only when the captured width exceeds 1920 pixels or its height exceeds 1080 pixels. It reduces both encoded dimensions to half scale before JPEG quality-88 encoding. The `CaptureResult` keeps the original physical desktop bounds, so a point returned in the smaller encoded image still maps proportionally to the correct location in the full-size window. Turning the toggle off keeps the capture at full resolution.
 
@@ -104,7 +107,7 @@ Optimization is applied only when the captured width exceeds 1920 pixels or its 
 | Include pointer in captures | Off | The current GDI capture does not add a pointer image. |
 | Retain captures locally | Off | Captures remain in memory and are not written to disk by the app. |
 
-The five capture fields are reserved internal model defaults, not visible controls or a selectable policy surface. Images, questions, and recent conversation turns are sent only when a question is submitted, through the provider currently selected in Settings.
+The five capture fields are reserved internal model defaults, not visible controls or a selectable policy surface. Images, typed questions or finalized voice transcripts, and recent conversation turns are sent only when a question is processed, through the provider currently selected in Settings. Speech recognition itself is local.
 
 ## Build, test, and run
 
@@ -130,19 +133,18 @@ The automated suite uses fake key stores and local HTTP/SSE fixtures. It does no
 
 ## Current limitations
 
-- Questions are typed. Microphone capture and transcription are not implemented.
 - Responses are text-only. TTS, audio playback, and startup audio are not implemented.
+- Voice input requires an installed Windows Speech Recognition language and a usable default microphone.
 - There is no packaged installer or signed release artifact.
 - Capture is limited to the active foreground window through GDI screen copying. There is no full-display, multi-display, Windows Graphics Capture, or occlusion-independent capture path yet.
-- Provider selection, Worker URL, model IDs, and conversation history are in memory and reset on restart. Direct-provider keys are the exception and persist in Windows Credential Manager.
+- Provider selection, Worker URL, model IDs, motion preference, pedal key, and conversation history are in memory and reset on restart. Direct-provider keys are the exception and persist in Windows Credential Manager.
 - Capture scope is fixed to the active window. Except for large-capture optimization, the reserved capture fields are not user-configurable, and visible Clicky overlap is not explicitly removed from GDI captures.
 - Automated tests do not make billable live-provider requests or validate account-specific model access.
 
 ## Next milestones
 
-1. Add push-to-talk microphone capture and a transcription provider while preserving the capture-before-focus behavior.
-2. Add streamed response presentation plus TTS playback and cancellation.
-3. Replace or supplement GDI with an explicit Windows Graphics Capture pipeline, then wire the display, pointer, exclusion, and retention settings to real capture policies.
-4. Persist non-secret provider preferences and add clear-data controls for any future retained content.
-5. Add an explicitly opted-in live integration harness that never logs or commits credentials.
-6. Produce a signed, versioned installer with upgrade and uninstall behavior.
+1. Add TTS playback and cancellation.
+2. Replace or supplement GDI with an explicit Windows Graphics Capture pipeline, then wire the display, pointer, exclusion, and retention settings to real capture policies.
+3. Persist non-secret provider preferences and add clear-data controls for any future retained content.
+4. Add an explicitly opted-in live integration harness that never logs or commits credentials.
+5. Produce a signed, versioned installer with upgrade and uninstall behavior.

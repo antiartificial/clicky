@@ -1,4 +1,5 @@
 using Clicky.Windows.Configuration;
+using Clicky.Windows.Input;
 
 namespace Clicky.Windows.Tests;
 
@@ -17,5 +18,19 @@ public sealed class CompanionSettingsTests
         Assert.IsFalse(settings.IncludePointerInCaptures);
         Assert.IsTrue(settings.OptimizeLargeCaptures);
         Assert.IsFalse(settings.RetainCapturesLocally);
+        Assert.IsTrue(settings.MotionEffectsEnabled);
+        Assert.AreEqual(PushToTalkKey.F13, settings.PushToTalkKey);
+    }
+
+    [TestMethod]
+    public void PushToTalkKey_RejectsValuesOutsideSupportedFunctionKeys()
+    {
+        var settings = new CompanionSettings();
+
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => settings.PushToTalkKey = (PushToTalkKey)0x7B);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+            () => settings.PushToTalkKey = (PushToTalkKey)0x88);
+        Assert.AreEqual(PushToTalkKey.F13, settings.PushToTalkKey);
     }
 }

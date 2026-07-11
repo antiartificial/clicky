@@ -9,6 +9,7 @@ using Clicky.Windows.Pointing;
 using Clicky.Windows.Providers;
 using Clicky.Windows.Session;
 using Clicky.Windows.ViewModels;
+using Clicky.Windows.Voice;
 
 namespace Clicky.Windows.Tests;
 
@@ -180,10 +181,181 @@ public sealed class CompanionViewModelTests
         Assert.IsFalse(viewModel.ResponseText.Contains(providerBody, StringComparison.Ordinal));
     }
 
+    [TestMethod]
+    public async Task BeginVoiceInteractionAsync_StartsDictationAndCapturesWithoutRequestingFocus()
+    {
+        var calls = new List<string>();
+        var dictationTranscriber = new FakeDictationTranscriber(
+            start: (_) =>
+            {
+                calls.Add("start-dictation");
+                return Task.CompletedTask;
+            });
+        using var viewModel = CreateViewModel(
+            new FakeCaptureService((_) =>
+            {
+                calls.Add("capture");
+                return Task.FromResult(CreateCapture());
+            }),
+            new FakeWorkerClient((_, _) => Stream("unused [POINT:none]")),
+            dictationTranscriber: dictationTranscriber);
+        var focusRequestCount = 0;
+        viewModel.QuestionEntryReady += (_, _) => focusRequestCount++;
+
+        await viewModel.BeginVoiceInteractionAsync();
+
+        CollectionAssert.AreEqual(new[] { "start-dictation", "capture" }, calls);
+        Assert.AreEqual(0, focusRequestCount);
+        Assert.IsFalse(viewModel.IsQuestionEntryVisible);
+        Assert.AreEqual(CompanionSessionState.Listening, viewModel.State);
+        Assert.IsTrue(dictationTranscriber.IsTranscribing);
+
+        await viewModel.CancelCurrentInteractionAsync();
+    }
+
+    [TestMethod]
+    public async Task CompleteVoiceInteractionAsync_UsesOnePreparedCaptureAndTranscript()
+    {
+        var captureCount = 0;
+        WorkerChatRequest? request = null;
+        var dictationTranscriber = new FakeDictationTranscriber(
+            stop: (_) => Task.FromResult("  Where is the save button?  "));
+        using var viewModel = CreateViewModel(
+            new FakeCaptureService((_) =>
+            {
+                captureCount++;
+                return Task.FromResult(CreateCapture());
+            }),
+            new FakeWorkerClient((sentRequest, _) =>
+            {
+                request = sentRequest;
+                return Stream("Use the toolbar save button. [POINT:320,180:save button]");
+            }),
+            dictationTranscriber: dictationTranscriber);
+
+        await viewModel.BeginVoiceInteractionAsync();
+        await viewModel.CompleteVoiceInteractionAsync();
+
+        Assert.AreEqual(1, captureCount);
+        Assert.AreEqual(1, dictationTranscriber.StartCount);
+        Assert.AreEqual(1, dictationTranscriber.StopCount);
+        Assert.AreEqual("Where is the save button?", request?.UserPrompt);
+        Assert.AreEqual(CompanionSessionState.Responding, viewModel.State);
+        Assert.AreEqual("Use the toolbar save button.", viewModel.ResponseText);
+    }
+
+    [TestMethod]
+    public async Task CompleteVoiceInteractionAsync_ReleaseBeforeCaptureCompletesStillUsesCapture()
+    {
+        var captureStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var captureCompletion = new TaskCompletionSource<CaptureResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        WorkerChatRequest? request = null;
+        var dictationTranscriber = new FakeDictationTranscriber(
+            stop: (_) => Task.FromResult("What should I click?"));
+        using var viewModel = CreateViewModel(
+            new FakeCaptureService((_) =>
+            {
+                captureStarted.SetResult();
+                return captureCompletion.Task;
+            }),
+            new FakeWorkerClient((sentRequest, _) =>
+            {
+                request = sentRequest;
+                return Stream("Click Run. [POINT:500,100:run button]");
+            }),
+            dictationTranscriber: dictationTranscriber);
+
+        await viewModel.BeginVoiceInteractionAsync();
+        await captureStarted.Task;
+        var completion = viewModel.CompleteVoiceInteractionAsync();
+
+        Assert.IsFalse(completion.IsCompleted);
+        Assert.AreEqual(0, dictationTranscriber.StopCount);
+
+        captureCompletion.SetResult(CreateCapture());
+        await completion;
+
+        Assert.AreEqual(1, dictationTranscriber.StopCount);
+        Assert.AreEqual("What should I click?", request?.UserPrompt);
+        Assert.AreEqual("Click Run.", viewModel.ResponseText);
+    }
+
+    [TestMethod]
+    public async Task CompleteVoiceInteractionAsync_EmptyTranscriptShowsTryAgainResponse()
+    {
+        var workerRequestCount = 0;
+        var dictationTranscriber = new FakeDictationTranscriber(
+            stop: (_) => Task.FromResult("   "));
+        using var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) =>
+            {
+                workerRequestCount++;
+                return Stream("unused [POINT:none]");
+            }),
+            dictationTranscriber: dictationTranscriber);
+
+        await viewModel.BeginVoiceInteractionAsync();
+        await viewModel.CompleteVoiceInteractionAsync();
+
+        Assert.AreEqual(0, workerRequestCount);
+        Assert.AreEqual(CompanionSessionState.Responding, viewModel.State);
+        Assert.AreEqual(BrandText.EmptyDictationStatus, viewModel.StatusText);
+        Assert.AreEqual(BrandText.EmptyDictationDetail, viewModel.ResponseText);
+    }
+
+    [TestMethod]
+    public async Task VoiceInteraction_DictationUnavailableShowsSpeechSetupResponse()
+    {
+        var startCompletion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var dictationTranscriber = new FakeDictationTranscriber(
+            start: (_) => startCompletion.Task);
+        using var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) => Stream("unused [POINT:none]")),
+            dictationTranscriber: dictationTranscriber);
+
+        await viewModel.BeginVoiceInteractionAsync();
+        var completion = viewModel.CompleteVoiceInteractionAsync();
+        startCompletion.SetException(new DictationUnavailableException(
+            DictationUnavailableReason.SpeechRecognizer,
+            "Speech recognition is unavailable."));
+        await completion;
+
+        Assert.AreEqual(CompanionSessionState.Responding, viewModel.State);
+        Assert.AreEqual(BrandText.DictationSetupStatus, viewModel.StatusText);
+        Assert.AreEqual(BrandText.DictationSetupDetail, viewModel.ResponseText);
+    }
+
+    [TestMethod]
+    public async Task CancelCurrentInteractionAsync_StopsDictationAndReturnsToIdle()
+    {
+        var dictationTranscriber = new FakeDictationTranscriber();
+        using var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) => Stream("unused [POINT:none]")),
+            dictationTranscriber: dictationTranscriber);
+
+        await viewModel.BeginVoiceInteractionAsync();
+        Assert.IsTrue(dictationTranscriber.IsTranscribing);
+
+        await viewModel.CancelCurrentInteractionAsync();
+
+        Assert.AreEqual(1, dictationTranscriber.CancelCount);
+        Assert.IsFalse(dictationTranscriber.IsTranscribing);
+        Assert.AreEqual(CompanionSessionState.Idle, viewModel.State);
+        Assert.IsNull(viewModel.CurrentInteractionId);
+        Assert.AreEqual(string.Empty, viewModel.ResponseText);
+    }
+
     private static CompanionViewModel CreateViewModel(
         IActiveWindowCaptureService captureService,
         IWorkerClient workerClient,
-        IPointCuePresenter? pointCuePresenter = null)
+        IPointCuePresenter? pointCuePresenter = null,
+        IDictationTranscriber? dictationTranscriber = null)
     {
         var settings = new CompanionSettings();
         var coordinator = new CompanionSessionCoordinator();
@@ -193,7 +365,8 @@ public sealed class CompanionViewModelTests
             settings,
             interactionService,
             pointCuePresenter ?? new FakePointCuePresenter(),
-            new FakeProviderApiKeyStore());
+            new FakeProviderApiKeyStore(),
+            dictationTranscriber);
     }
 
     private static CaptureResult CreateCapture() =>
@@ -261,6 +434,46 @@ public sealed class CompanionViewModelTests
             WorkerChatRequest request,
             CancellationToken cancellationToken = default) =>
             stream(request, cancellationToken);
+    }
+
+    private sealed class FakeDictationTranscriber(
+        Func<CancellationToken, Task>? start = null,
+        Func<CancellationToken, Task<string>>? stop = null,
+        Func<CancellationToken, Task>? cancel = null) : IDictationTranscriber
+    {
+        public bool IsTranscribing { get; private set; }
+
+        public int StartCount { get; private set; }
+
+        public int StopCount { get; private set; }
+
+        public int CancelCount { get; private set; }
+
+        public async Task StartAsync(CancellationToken cancellationToken = default)
+        {
+            StartCount++;
+            await (start?.Invoke(cancellationToken) ?? Task.CompletedTask);
+            IsTranscribing = true;
+        }
+
+        public async Task<string> StopAsync(CancellationToken cancellationToken = default)
+        {
+            StopCount++;
+            var transcript = await (stop?.Invoke(cancellationToken) ?? Task.FromResult(string.Empty));
+            IsTranscribing = false;
+            return transcript;
+        }
+
+        public async Task CancelAsync(CancellationToken cancellationToken = default)
+        {
+            CancelCount++;
+            await (cancel?.Invoke(cancellationToken) ?? Task.CompletedTask);
+            IsTranscribing = false;
+        }
+
+        public void Dispose()
+        {
+        }
     }
 
     private sealed class FakePointCuePresenter : IPointCuePresenter

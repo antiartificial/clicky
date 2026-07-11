@@ -188,6 +188,47 @@
             </Setter>
         </Style>
 
+        <Style x:Key="MotionToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Grid>
+                            <Border x:Name="Track"
+                                    Background="{StaticResource GraphiteBrush}"
+                                    BorderBrush="{StaticResource GraphiteLineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="10" />
+                            <Ellipse x:Name="Thumb"
+                                     Width="14"
+                                     Height="14"
+                                     Margin="3"
+                                     HorizontalAlignment="Left"
+                                     Fill="{StaticResource WarmWhiteBrush}" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="{StaticResource SignalLimeBrush}" />
+                                <Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource SignalLimeBrush}" />
+                                <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right" />
+                                <Setter TargetName="Thumb" Property="Fill" Value="{StaticResource GraphiteBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource StudioTealBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource WarmWhiteBrush}" />
+                                <Setter TargetName="Track" Property="BorderThickness" Value="2" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
     </Window.Resources>
 
     <Border Margin="8"
@@ -383,9 +424,13 @@
                                 <Style TargetType="Grid">
                                     <Setter Property="Opacity" Value="1" />
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding State}"
-                                                     Value="{x:Static session:CompanionSessionState.Listening}">
-                                            <DataTrigger.EnterActions>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding State}"
+                                                           Value="{x:Static session:CompanionSessionState.Listening}" />
+                                                <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <MultiDataTrigger.EnterActions>
                                                 <BeginStoryboard Name="ListeningMeterAnimation">
                                                     <Storyboard>
                                                         <DoubleAnimation Storyboard.TargetProperty="Opacity"
@@ -402,14 +447,18 @@
                                                                          RepeatBehavior="Forever" />
                                                     </Storyboard>
                                                 </BeginStoryboard>
-                                            </DataTrigger.EnterActions>
-                                            <DataTrigger.ExitActions>
+                                            </MultiDataTrigger.EnterActions>
+                                            <MultiDataTrigger.ExitActions>
                                                 <RemoveStoryboard BeginStoryboardName="ListeningMeterAnimation" />
-                                            </DataTrigger.ExitActions>
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding State}"
-                                                     Value="{x:Static session:CompanionSessionState.Processing}">
-                                            <DataTrigger.EnterActions>
+                                            </MultiDataTrigger.ExitActions>
+                                        </MultiDataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding State}"
+                                                           Value="{x:Static session:CompanionSessionState.Processing}" />
+                                                <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <MultiDataTrigger.EnterActions>
                                                 <BeginStoryboard Name="ProcessingMeterAnimation">
                                                     <Storyboard>
                                                         <DoubleAnimation Storyboard.TargetProperty="Opacity"
@@ -420,11 +469,11 @@
                                                                          RepeatBehavior="Forever" />
                                                     </Storyboard>
                                                 </BeginStoryboard>
-                                            </DataTrigger.EnterActions>
-                                            <DataTrigger.ExitActions>
+                                            </MultiDataTrigger.EnterActions>
+                                            <MultiDataTrigger.ExitActions>
                                                 <RemoveStoryboard BeginStoryboardName="ProcessingMeterAnimation" />
-                                            </DataTrigger.ExitActions>
-                                        </DataTrigger>
+                                            </MultiDataTrigger.ExitActions>
+                                        </MultiDataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </Grid.Style>
@@ -462,7 +511,14 @@
                                         <DataTrigger Binding="{Binding State}"
                                                      Value="{x:Static session:CompanionSessionState.Listening}">
                                             <Setter Property="Foreground" Value="{StaticResource CoralBrush}" />
-                                            <DataTrigger.EnterActions>
+                                        </DataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding State}"
+                                                           Value="{x:Static session:CompanionSessionState.Listening}" />
+                                                <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <MultiDataTrigger.EnterActions>
                                                 <BeginStoryboard>
                                                     <Storyboard>
                                                         <DoubleAnimation Storyboard.TargetProperty="Opacity"
@@ -471,12 +527,19 @@
                                                                          Duration="0:0:0.16" />
                                                     </Storyboard>
                                                 </BeginStoryboard>
-                                            </DataTrigger.EnterActions>
-                                        </DataTrigger>
+                                            </MultiDataTrigger.EnterActions>
+                                        </MultiDataTrigger>
                                         <DataTrigger Binding="{Binding State}"
                                                      Value="{x:Static session:CompanionSessionState.Processing}">
                                             <Setter Property="Foreground" Value="{StaticResource MeterAmberBrush}" />
-                                            <DataTrigger.EnterActions>
+                                        </DataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding State}"
+                                                           Value="{x:Static session:CompanionSessionState.Processing}" />
+                                                <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <MultiDataTrigger.EnterActions>
                                                 <BeginStoryboard>
                                                     <Storyboard>
                                                         <DoubleAnimation Storyboard.TargetProperty="Opacity"
@@ -485,12 +548,19 @@
                                                                          Duration="0:0:0.16" />
                                                     </Storyboard>
                                                 </BeginStoryboard>
-                                            </DataTrigger.EnterActions>
-                                        </DataTrigger>
+                                            </MultiDataTrigger.EnterActions>
+                                        </MultiDataTrigger>
                                         <DataTrigger Binding="{Binding State}"
                                                      Value="{x:Static session:CompanionSessionState.Responding}">
                                             <Setter Property="Foreground" Value="{StaticResource StudioTealBrush}" />
-                                            <DataTrigger.EnterActions>
+                                        </DataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding State}"
+                                                           Value="{x:Static session:CompanionSessionState.Responding}" />
+                                                <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <MultiDataTrigger.EnterActions>
                                                 <BeginStoryboard>
                                                     <Storyboard>
                                                         <DoubleAnimation Storyboard.TargetProperty="Opacity"
@@ -499,8 +569,8 @@
                                                                          Duration="0:0:0.16" />
                                                     </Storyboard>
                                                 </BeginStoryboard>
-                                            </DataTrigger.EnterActions>
-                                        </DataTrigger>
+                                            </MultiDataTrigger.EnterActions>
+                                        </MultiDataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </TextBlock.Style>
@@ -585,7 +655,7 @@
                     BorderBrush="{StaticResource GraphiteLineBrush}"
                     BorderThickness="0,1,0,0"
                     Visibility="{Binding IsSettingsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <StackPanel>
+                <StackPanel Width="304">
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="4" />
@@ -744,6 +814,54 @@
                                        Text="{Binding ApiKeyStatusText}" />
                         </Grid>
                     </StackPanel>
+
+                    <Border Height="42"
+                            Margin="0,0,0,8"
+                            Background="{StaticResource GraphiteRaisedBrush}"
+                            BorderBrush="{StaticResource GraphiteLineBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6">
+                        <Grid Margin="9,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="1" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="60" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock VerticalAlignment="Center"
+                                       FontSize="11"
+                                       Foreground="{StaticResource WarmWhiteBrush}"
+                                       Text="{x:Static branding:BrandText.MotionEffectsLabel}" />
+                            <ToggleButton Grid.Column="1"
+                                          Margin="8,0,10,0"
+                                          VerticalAlignment="Center"
+                                          Style="{StaticResource MotionToggleStyle}"
+                                          IsChecked="{Binding Settings.MotionEffectsEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          AutomationProperties.Name="{x:Static branding:BrandText.MotionEffectsLabel}" />
+                            <Border Grid.Column="2"
+                                    Height="22"
+                                    VerticalAlignment="Center"
+                                    Background="{StaticResource GraphiteLineBrush}" />
+                            <TextBlock Grid.Column="3"
+                                       Margin="10,0,6,0"
+                                       VerticalAlignment="Center"
+                                       FontSize="11"
+                                       Foreground="{StaticResource WarmWhiteBrush}"
+                                       Opacity="0.72"
+                                       Text="{x:Static branding:BrandText.FootPedalKeyLabel}" />
+                            <ComboBox Grid.Column="4"
+                                      Height="26"
+                                      Padding="6,2"
+                                      VerticalAlignment="Center"
+                                      Background="{StaticResource GraphiteBrush}"
+                                      BorderBrush="{StaticResource GraphiteLineBrush}"
+                                      Foreground="{StaticResource GraphiteBrush}"
+                                      ItemsSource="{Binding PushToTalkKeys}"
+                                      SelectedItem="{Binding Settings.PushToTalkKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      AutomationProperties.Name="{x:Static branding:BrandText.FootPedalKeyLabel}" />
+                        </Grid>
+                    </Border>
 
                     <Border MinHeight="36"
                             Background="{StaticResource GraphiteRaisedBrush}"

@@ -1,25 +1,31 @@
+using System.ComponentModel;
 using System.Net;
+using System.Windows;
 using Clicky.Windows.Branding;
 using Clicky.Windows.Configuration;
+using Clicky.Windows.Input;
 using Clicky.Windows.Interaction;
+using Clicky.Windows.Motion;
 using Clicky.Windows.Mvvm;
 using Clicky.Windows.Networking;
 using Clicky.Windows.Overlay;
 using Clicky.Windows.Pointing;
 using Clicky.Windows.Providers;
 using Clicky.Windows.Session;
+using Clicky.Windows.Voice;
 
 namespace Clicky.Windows.ViewModels;
 
-public sealed class CompanionViewModel : ObservableObject
+public sealed class CompanionViewModel : ObservableObject, IDisposable
 {
     private const double CompactWindowHeight = 190;
-    private const double SettingsWindowHeight = 536;
+    private const double SettingsWindowHeight = 500;
 
     private readonly CompanionSessionCoordinator sessionCoordinator;
     private readonly TutorInteractionService tutorInteractionService;
     private readonly IPointCuePresenter pointCuePresenter;
     private readonly IProviderApiKeyStore apiKeyStore;
+    private readonly IDictationTranscriber? dictationTranscriber;
     private readonly SemaphoreSlim cueGate = new(1, 1);
 
     private CancellationTokenSource? interactionCancellationSource;
@@ -33,13 +39,16 @@ public sealed class CompanionViewModel : ObservableObject
     private bool isProviderOperationBusy;
     private bool hasStoredApiKey;
     private string apiKeyStatusText = BrandText.ApiKeyNotStored;
+    private VoiceInteraction? voiceInteraction;
+    private int disposeState;
 
     public CompanionViewModel(
         CompanionSessionCoordinator sessionCoordinator,
         CompanionSettings settings,
         TutorInteractionService tutorInteractionService,
         IPointCuePresenter pointCuePresenter,
-        IProviderApiKeyStore apiKeyStore)
+        IProviderApiKeyStore apiKeyStore,
+        IDictationTranscriber? dictationTranscriber = null)
     {
         ArgumentNullException.ThrowIfNull(sessionCoordinator);
         ArgumentNullException.ThrowIfNull(settings);
@@ -51,6 +60,7 @@ public sealed class CompanionViewModel : ObservableObject
         this.tutorInteractionService = tutorInteractionService;
         this.pointCuePresenter = pointCuePresenter;
         this.apiKeyStore = apiKeyStore;
+        this.dictationTranscriber = dictationTranscriber;
         Settings = settings;
 
         AdvanceSessionCommand = new RelayCommand(
@@ -76,6 +86,8 @@ public sealed class CompanionViewModel : ObservableObject
             () => CanChangeProviderSettings() && IsDirectProvider && HasStoredApiKey);
 
         sessionCoordinator.StateChanged += HandleSessionStateChanged;
+        Settings.PropertyChanged += HandleSettingsPropertyChanged;
+        SystemParameters.StaticPropertyChanged += HandleSystemParametersPropertyChanged;
     }
 
     public event EventHandler? QuestionEntryReady;
@@ -83,6 +95,11 @@ public sealed class CompanionViewModel : ObservableObject
     public event EventHandler? CompactStateRequested;
 
     public CompanionSettings Settings { get; }
+
+    public IReadOnlyList<PushToTalkKey> PushToTalkKeys { get; } =
+        Enum.GetValues<PushToTalkKey>();
+
+    public bool IsMotionEffectivelyEnabled => CompanionMotionPolicy.IsEnabled(Settings);
 
     public CompanionSessionState State => sessionCoordinator.State;
 
@@ -424,47 +441,11 @@ public sealed class CompanionViewModel : ObservableObject
 
         try
         {
-            var result = await tutorInteractionService.RespondAsync(
+            await RespondWithPreparedInteractionAsync(
+                interactionId.Value,
                 preparation,
                 submittedQuestion,
-                cancellationSource.Token);
-            if (!IsCurrent(interactionId.Value) || cancellationSource.IsCancellationRequested)
-            {
-                return;
-            }
-
-            LastInteractionResult = result;
-            await PresentResultCueIfCurrentAsync(interactionId.Value, result);
-            ShowResponse(interactionId.Value, BrandText.RespondingStatus, result.SpokenText);
-        }
-        catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
-        {
-            await ResetIfCurrentAsync(interactionId.Value);
-        }
-        catch (WorkerConfigurationException exception)
-        {
-            await HideCueIfCurrentAsync(interactionId.Value);
-            ShowResponse(interactionId.Value, BrandText.WorkerSetupStatus, exception.Message);
-        }
-        catch (AnthropicProviderException exception)
-        {
-            await HideCueIfCurrentAsync(interactionId.Value);
-            var (status, detail) = DescribeAnthropicFailure(exception);
-            ShowResponse(interactionId.Value, status, detail);
-        }
-        catch (OpenAiProviderException exception)
-        {
-            await HideCueIfCurrentAsync(interactionId.Value);
-            var (status, detail) = DescribeOpenAIFailure(exception);
-            ShowResponse(interactionId.Value, status, detail);
-        }
-        catch (Exception)
-        {
-            await HideCueIfCurrentAsync(interactionId.Value);
-            ShowResponse(
-                interactionId.Value,
-                "Couldn't answer",
-                "The selected AI provider didn't answer. Check its settings and try again.");
+                cancellationSource);
         }
         finally
         {
@@ -476,6 +457,46 @@ public sealed class CompanionViewModel : ObservableObject
         }
     }
 
+    public Task BeginVoiceInteractionAsync()
+    {
+        if (dictationTranscriber is null || !CanBeginQuestion())
+        {
+            return Task.CompletedTask;
+        }
+
+        CancelInteractionToken();
+        Question = string.Empty;
+        ResponseText = string.Empty;
+        responseStatusText = BrandText.RespondingStatus;
+        IsQuestionEntryVisible = false;
+        preparedInteraction = null;
+
+        var interactionId = sessionCoordinator.BeginListening();
+        var cancellationSource = new CancellationTokenSource();
+        interactionCancellationSource = cancellationSource;
+        var interaction = new VoiceInteraction(interactionId, cancellationSource);
+        voiceInteraction = interaction;
+        interaction.Workflow = RunVoiceInteractionAsync(interaction);
+        return Task.CompletedTask;
+    }
+
+    public async Task CompleteVoiceInteractionAsync()
+    {
+        var interaction = voiceInteraction;
+        if (interaction is null)
+        {
+            return;
+        }
+
+        if (IsCurrent(interaction.InteractionId) && State == CompanionSessionState.Listening)
+        {
+            _ = sessionCoordinator.BeginProcessing(interaction.InteractionId);
+        }
+
+        interaction.ReleaseSignal.TrySetResult();
+        await interaction.Workflow;
+    }
+
     public void CancelCurrentInteraction()
     {
         _ = CancelCurrentInteractionAndObserveAsync();
@@ -483,7 +504,31 @@ public sealed class CompanionViewModel : ObservableObject
 
     public async Task CancelCurrentInteractionAsync()
     {
-        CancelInteractionToken();
+        var activeVoiceInteraction = voiceInteraction;
+        voiceInteraction = null;
+        var cancellationSource = interactionCancellationSource;
+        interactionCancellationSource = null;
+        cancellationSource?.Cancel();
+
+        if (activeVoiceInteraction is not null && dictationTranscriber is not null)
+        {
+            activeVoiceInteraction.ReleaseSignal.TrySetCanceled();
+            try
+            {
+                await dictationTranscriber.CancelAsync();
+            }
+            catch (InvalidOperationException)
+            {
+                // Recognition may finish between the state check and cancellation.
+            }
+
+            await activeVoiceInteraction.Workflow;
+        }
+        else
+        {
+            cancellationSource?.Dispose();
+        }
+
         preparedInteraction = null;
         IsQuestionEntryVisible = false;
         Question = string.Empty;
@@ -491,6 +536,154 @@ public sealed class CompanionViewModel : ObservableObject
         sessionCoordinator.ResetToIdle();
         CompactStateRequested?.Invoke(this, EventArgs.Empty);
         await HideCueAsync();
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref disposeState, 1) != 0)
+        {
+            return;
+        }
+
+        sessionCoordinator.StateChanged -= HandleSessionStateChanged;
+        Settings.PropertyChanged -= HandleSettingsPropertyChanged;
+        SystemParameters.StaticPropertyChanged -= HandleSystemParametersPropertyChanged;
+        voiceInteraction?.ReleaseSignal.TrySetCanceled();
+        voiceInteraction = null;
+        var cancellationSource = interactionCancellationSource;
+        interactionCancellationSource = null;
+        cancellationSource?.Cancel();
+    }
+
+    private async Task RunVoiceInteractionAsync(VoiceInteraction interaction)
+    {
+        var cancellationSource = interaction.CancellationSource;
+        try
+        {
+            await HideCueIfCurrentAsync(interaction.InteractionId);
+            await dictationTranscriber!.StartAsync(cancellationSource.Token);
+            var preparation = await tutorInteractionService.PrepareAsync(cancellationSource.Token);
+            await interaction.ReleaseSignal.Task.WaitAsync(cancellationSource.Token);
+            var transcript = (await dictationTranscriber.StopAsync(cancellationSource.Token)).Trim();
+
+            if (!IsCurrent(interaction.InteractionId) || cancellationSource.IsCancellationRequested)
+            {
+                return;
+            }
+
+            EnsureVoiceProcessing(interaction.InteractionId);
+            if (string.IsNullOrWhiteSpace(transcript))
+            {
+                await HideCueIfCurrentAsync(interaction.InteractionId);
+                ShowResponse(
+                    interaction.InteractionId,
+                    BrandText.EmptyDictationStatus,
+                    BrandText.EmptyDictationDetail);
+                return;
+            }
+
+            await RespondWithPreparedInteractionAsync(
+                interaction.InteractionId,
+                preparation,
+                transcript,
+                cancellationSource);
+        }
+        catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
+        {
+            await ResetIfCurrentAsync(interaction.InteractionId);
+        }
+        catch (DictationUnavailableException)
+        {
+            EnsureVoiceProcessing(interaction.InteractionId);
+            await HideCueIfCurrentAsync(interaction.InteractionId);
+            ShowResponse(
+                interaction.InteractionId,
+                BrandText.DictationSetupStatus,
+                BrandText.DictationSetupDetail);
+        }
+        catch (Exception)
+        {
+            EnsureVoiceProcessing(interaction.InteractionId);
+            await HideCueIfCurrentAsync(interaction.InteractionId);
+            ShowResponse(
+                interaction.InteractionId,
+                "Voice question missed",
+                "I couldn't capture that voice question. Keep the app visible and try again.");
+        }
+        finally
+        {
+            if (ReferenceEquals(voiceInteraction, interaction))
+            {
+                voiceInteraction = null;
+            }
+
+            if (ReferenceEquals(interactionCancellationSource, cancellationSource))
+            {
+                interactionCancellationSource = null;
+            }
+
+            cancellationSource.Dispose();
+        }
+    }
+
+    private async Task RespondWithPreparedInteractionAsync(
+        CompanionInteractionId interactionId,
+        PreparedTutorInteraction preparation,
+        string prompt,
+        CancellationTokenSource cancellationSource)
+    {
+        try
+        {
+            var result = await tutorInteractionService.RespondAsync(
+                preparation,
+                prompt,
+                cancellationSource.Token);
+            if (!IsCurrent(interactionId) || cancellationSource.IsCancellationRequested)
+            {
+                return;
+            }
+
+            LastInteractionResult = result;
+            await PresentResultCueIfCurrentAsync(interactionId, result);
+            ShowResponse(interactionId, BrandText.RespondingStatus, result.SpokenText);
+        }
+        catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
+        {
+            await ResetIfCurrentAsync(interactionId);
+        }
+        catch (WorkerConfigurationException exception)
+        {
+            await HideCueIfCurrentAsync(interactionId);
+            ShowResponse(interactionId, BrandText.WorkerSetupStatus, exception.Message);
+        }
+        catch (AnthropicProviderException exception)
+        {
+            await HideCueIfCurrentAsync(interactionId);
+            var (status, detail) = DescribeAnthropicFailure(exception);
+            ShowResponse(interactionId, status, detail);
+        }
+        catch (OpenAiProviderException exception)
+        {
+            await HideCueIfCurrentAsync(interactionId);
+            var (status, detail) = DescribeOpenAIFailure(exception);
+            ShowResponse(interactionId, status, detail);
+        }
+        catch (Exception)
+        {
+            await HideCueIfCurrentAsync(interactionId);
+            ShowResponse(
+                interactionId,
+                "Couldn't answer",
+                "The selected AI provider didn't answer. Check its settings and try again.");
+        }
+    }
+
+    private void EnsureVoiceProcessing(CompanionInteractionId interactionId)
+    {
+        if (IsCurrent(interactionId) && State == CompanionSessionState.Listening)
+        {
+            _ = sessionCoordinator.BeginProcessing(interactionId);
+        }
     }
 
     private bool CanBeginQuestion() =>
@@ -771,5 +964,36 @@ public sealed class CompanionViewModel : ObservableObject
         CancelSessionCommand.RaiseCanExecuteChanged();
         OnPropertyChanged(nameof(CanSaveApiKey));
         RaiseProviderCommandCanExecuteChanged();
+    }
+
+    private void HandleSettingsPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
+    {
+        if (eventArgs.PropertyName == nameof(CompanionSettings.MotionEffectsEnabled))
+        {
+            OnPropertyChanged(nameof(IsMotionEffectivelyEnabled));
+        }
+    }
+
+    private void HandleSystemParametersPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
+    {
+        if (string.IsNullOrEmpty(eventArgs.PropertyName) ||
+            eventArgs.PropertyName == nameof(SystemParameters.ClientAreaAnimation))
+        {
+            OnPropertyChanged(nameof(IsMotionEffectivelyEnabled));
+        }
+    }
+
+    private sealed class VoiceInteraction(
+        CompanionInteractionId interactionId,
+        CancellationTokenSource cancellationSource)
+    {
+        public CompanionInteractionId InteractionId { get; } = interactionId;
+
+        public CancellationTokenSource CancellationSource { get; } = cancellationSource;
+
+        public TaskCompletionSource ReleaseSignal { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Workflow { get; set; } = Task.CompletedTask;
     }
 }

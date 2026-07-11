@@ -2,7 +2,7 @@
 
 ## Scope
 
-The Windows subtree is a .NET 10 prototype of Clicky as a typed, screenshot-grounded visual guide for any active desktop application. It can help with interfaces such as Adobe apps, Visual Studio, or Rive based on what is visible; these are examples, not application-specific integrations. It can share the existing Cloudflare Worker contract or connect directly to Anthropic and OpenAI. It is otherwise separate from the Swift/macOS application. It currently covers capture and adaptive encoding, typed input, multi-provider streaming chat, response parsing, coordinate mapping, a point cue, secure local key storage, settings UI, startup splash, and tray lifecycle. Voice input, transcription, TTS/audio, non-secret settings persistence, and packaging are outside the implemented scope.
+The Windows subtree is a .NET 10 prototype of Clicky as a typed and foot-pedal voice, screenshot-grounded visual guide for any active desktop application. It can help with interfaces such as Adobe apps, Visual Studio, or Rive based on what is visible; these are examples, not application-specific integrations. It can share the existing Cloudflare Worker contract or connect directly to Anthropic and OpenAI. It is otherwise separate from the Swift/macOS application. It currently covers capture and adaptive encoding, typed input, local `System.Speech` dictation, global pedal monitoring, multi-provider streaming chat, response parsing, coordinate mapping, optional cue motion, secure local key storage, settings UI, startup splash, and tray lifecycle. TTS/audio, non-secret settings persistence, and packaging are outside the implemented scope.
 
 ## Runtime shape
 
@@ -12,6 +12,8 @@ The Windows subtree is a .NET 10 prototype of Clicky as a typed, screenshot-grou
 - **State:** `CompanionSessionCoordinator` owns the `Idle -> Listening -> Processing -> Responding` state machine and interaction IDs.
 - **Routing:** `ProviderRoutingChatClient` selects Worker, Anthropic, or OpenAI from `CompanionSettings` before an async response is enumerated.
 - **Networking:** one settings-aware Worker client plus dedicated no-redirect direct-provider clients stream text over SSE.
+- **Voice:** `GlobalPushToTalkMonitor` supplies global F13-F24 press/release transitions and `SystemSpeechDictationTranscriber` performs local dictation through the default microphone.
+- **Motion:** `CompanionMotionPolicy` enables cue motion only when the default-on app setting and Windows client-area animations are both enabled.
 - **Secrets:** `WindowsCredentialApiKeyStore` uses the Win32 Credential Manager API for provider-specific generic credentials.
 - **Native interop:** User32, DWM, GDI, Credential Manager, and monitor/DPI APIs provide capture, window styles, secure local key storage, coordinate bounds, and overlay placement.
 - **Startup:** a non-activating, reduced-motion-aware WPF splash runs a nominal 1.35-second logo/focus-ring sequence before the companion appears.
@@ -19,13 +21,15 @@ The Windows subtree is a .NET 10 prototype of Clicky as a typed, screenshot-grou
 ## Request sequence
 
 ```text
-User clicks primary action while the app they want help with is foreground
-    -> CompanionViewModel.BeginQuestionEntryAsync
+User clicks the primary action or presses the configured pedal key
+    -> typed: CompanionViewModel.BeginQuestionEntryAsync
+    -> voice press: CompanionViewModel.BeginVoiceInteractionAsync
     -> CompanionSessionCoordinator: Listening
     -> TutorInteractionService.PrepareAsync
     -> ActiveWindowCaptureService captures the foreground HWND
-    -> CompanionWindow becomes activating and focuses the text box
-    -> user submits the typed question
+    -> typed: CompanionWindow focuses the text box; user submits the question
+    -> voice: SystemSpeechDictationTranscriber listens locally until pedal release
+       -> CompanionViewModel.CompleteVoiceInteractionAsync finalizes the transcript
     -> CompanionSessionCoordinator: Processing
     -> TutorInteractionService.RespondAsync
     -> ProviderRoutingChatClient snapshots the selected provider
@@ -40,7 +44,7 @@ User clicks primary action while the app they want help with is foreground
     -> CompanionSessionCoordinator: Responding
 ```
 
-Capturing before question-field focus is intentional. If the companion activated first, the foreground-window capture service would capture Clicky instead of the application the user is asking about.
+Capturing before question-field focus is intentional. If the companion activated first, the foreground-window capture service would capture Clicky instead of the application the user is asking about. A pedal press starts dictation and capture preparation together; release finalizes the transcript before the shared response path sends it through the selected chat provider.
 
 `ProviderRoutingChatClient` resolves the selected client before returning the response enumerable. The provider therefore cannot change midway through one stream. Selecting another provider through the view model first cancels the current or prepared interaction, clears the tutor's in-memory history, updates the selection, and refreshes that provider's key status.
 
@@ -57,6 +61,12 @@ This is screen copying, not an occlusion-independent window capture API. Covered
 ## Provider routing and contracts
 
 All three transports implement the existing `IWorkerClient`/`WorkerChatRequest` abstraction. The names are historical; direct providers do not pass through the Worker. `TutorInteractionService` builds one provider-neutral logical request containing the generic `VisualGuideTutor` system prompt, active-window title, current question, active-window JPEG, up to 10 in-memory user/assistant turns, and a 1024-token output limit.
+
+## Voice input
+
+`GlobalPushToTalkMonitor` installs a system-wide low-level keyboard hook for the selected F13-F24 key, default F13, and publishes one press/release transition per physical hold. Changing the in-memory pedal setting updates the monitored key.
+
+`SystemSpeechDictationTranscriber` loads a local `DictationGrammar`, uses the default audio input, and accumulates recognized phrases. It requires an installed Windows recognition language and a usable default microphone. Recognition starts on pedal press; pedal release stops recognition, finalizes the transcript, and routes the text through the same selected Worker, Anthropic, or OpenAI chat path as a typed question. Dictation is local, but the finalized transcript becomes provider request content. There is no TTS or audio playback path.
 
 ### Worker
 
@@ -125,7 +135,7 @@ Non-secret `CompanionSettings` values are currently in memory only. The app star
 
 `PointResponseParser` recognizes a directive only at the end of the response. The spoken/displayed text excludes the directive. A missing terminal directive fails the interaction; `[POINT:none]` returns text without a target.
 
-`PointCuePresenter` creates a topmost transparent WPF window on demand. Its native styles include no-activate, transparent, and tool-window flags; hit testing and mouse activation are explicitly suppressed. The cue is DPI-aware, constrained to the target monitor's work area, optionally labeled, and hidden when a new interaction begins or is canceled.
+`PointCuePresenter` creates a topmost transparent WPF window on demand. Its native styles include no-activate, transparent, and tool-window flags; hit testing and mouse activation are explicitly suppressed. The cue is DPI-aware, constrained to the target monitor's work area, optionally labeled, and hidden when a new interaction begins or is canceled. When motion is effectively enabled, the overlay window animates the cue to its target and pulses it; the real mouse pointer is never moved.
 
 ## Shell and focus behavior
 
@@ -144,6 +154,8 @@ The visible Settings surface exposes:
 - a segmented Worker/Anthropic/OpenAI provider selector
 - Worker URL in Worker mode
 - provider-specific Model ID and masked API-key controls in direct mode
+- a default-on `Motion` toggle combined with the Windows reduced-motion preference
+- an F13-F24 `Foot pedal key` selector, default F13
 - a noninteractive `Active window` capture-scope row
 - a default-on `Optimize large captures` toggle
 
@@ -155,16 +167,19 @@ The visible Settings surface exposes:
 - include pointer: off
 - retain captures locally: off
 
-The current capture path always takes one foreground-window JPEG during request preparation, does not write it to disk, does not explicitly draw the pointer, and does not explicitly remove visible Clicky pixels. Capture-before-focus preserves the user's foreground HWND; it is not window-content exclusion. Large-capture optimization is the only visible capture-policy toggle; the five other capture fields remain reserved internal defaults and do not imply that multiple capture scopes already exist.
+The current capture path always takes one foreground-window JPEG during request preparation, does not write it to disk, does not explicitly draw the pointer, and does not explicitly remove visible Clicky pixels. Capture-before-focus preserves the user's foreground HWND; it is not window-content exclusion. Large-capture optimization is the only visible capture-policy toggle; the five other capture fields remain reserved internal defaults and do not imply that multiple capture scopes already exist. All non-secret settings, including motion and pedal key, remain memory-only and reset on restart.
 
 ## Key files
 
 | Path | Responsibility |
 |---|---|
-| `src/Clicky.Windows/App.xaml.cs` | Startup composition, splash sequencing, provider clients, and tray/window shutdown lifecycle. |
+| `src/Clicky.Windows/App.xaml.cs` | Startup composition, splash sequencing, provider clients, dictation, pedal monitoring, and tray/window shutdown lifecycle. |
 | `src/Clicky.Windows/Shell/CompanionWindow.xaml(.cs)` | Companion UI, provider/key settings, focus timing, native non-activating style, and placement. |
 | `src/Clicky.Windows/Shell/StartupSplashWindow.xaml(.cs)` | Reduced-motion-aware, non-activating startup animation. |
-| `src/Clicky.Windows/ViewModels/CompanionViewModel.cs` | Typed interaction orchestration, provider switching, key operations, cancellation, and safe provider errors. |
+| `src/Clicky.Windows/ViewModels/CompanionViewModel.cs` | Typed and voice interaction orchestration, provider switching, key operations, cancellation, and safe provider errors. |
+| `src/Clicky.Windows/Input/` | Global F13-F24 pedal hook and press/release transition tracking. |
+| `src/Clicky.Windows/Voice/` | Local `System.Speech` dictation lifecycle and setup failures. |
+| `src/Clicky.Windows/Motion/CompanionMotionPolicy.cs` | App and Windows reduced-motion policy. |
 | `src/Clicky.Windows/Session/CompanionSessionCoordinator.cs` | Session states and stale-interaction protection. |
 | `src/Clicky.Windows/Capture/ActiveWindowCaptureService.cs` | Foreground-window DWM/GDI capture and settings-aware processing handoff. |
 | `src/Clicky.Windows/Capture/CaptureOptimizationPolicy.cs` | 1920x1080 threshold and deterministic half-scale encoding plan. |
@@ -185,6 +200,7 @@ The current capture path always takes one foreground-window JPEG during request 
 | `src/Clicky.Windows/Pointing/CoordinateMapper.cs` | Capture-pixel to physical-desktop mapping. |
 | `src/Clicky.Windows/Overlay/PointCuePresenter.cs` | Cue lifecycle, DPI-aware layout, and cancellation. |
 | `src/Clicky.Windows/Overlay/PointCueWindow.cs` | Click-through, non-activating overlay rendering. |
+| `src/Clicky.Windows/Overlay/PointCueMotionPathCalculator.cs` | Cue reveal and travel paths; does not move the system pointer. |
 | `src/Clicky.Windows/Shell/TrayIconHost.cs` | Notification-area icon and commands. |
 | `src/Clicky.Windows/Assets/Clicky.png` | Companion and startup-splash image asset. |
 | `src/Clicky.Windows/Assets/Clicky.ico` | Tray and executable icon asset. |
@@ -210,4 +226,4 @@ Or use the repository-local SDK:
 
 Automated tests use fake credential stores and local HTTP/SSE handlers. They validate routing, request bodies, authentication placement, stream termination, errors, settings transitions, and UI/view-model behavior without reading a real key or making live, billable Worker, Anthropic, or OpenAI requests. Live account permissions and model availability are therefore outside the default suite.
 
-The Windows subtree does not change the macOS Xcode workflow. It also has no installer project, microphone/transcription path, TTS/audio playback, or startup sound yet.
+The Windows subtree does not change the macOS Xcode workflow. It also has no installer project, TTS/audio playback, or startup sound yet. The default automated suite is not live Worker, Anthropic, or OpenAI E2E verification.

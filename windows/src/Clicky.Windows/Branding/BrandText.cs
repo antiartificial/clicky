@@ -28,6 +28,8 @@ public static class BrandText
     public const string ApiKeyStatusFailed = "Could not read key status from Windows Credential Manager.";
     public const string CaptureScopeLabel = "Capture scope";
     public const string ActiveWindowCaptureScope = "Active window";
+    public const string MotionEffectsLabel = "Motion effects";
+    public const string FootPedalKeyLabel = "Pedal key";
     public const string IdleStatus = "Ready";
     public const string ListeningStatus = "Listening";
     public const string ProcessingStatus = "Thinking";
@@ -45,4 +47,8 @@ public static class BrandText
     public const string CloseTooltip = "Hide Clicky";
     public const string PrimaryActionTooltip = "Capture the active app and ask";
     public const string CancelActionTooltip = "Cancel question";
+    public const string EmptyDictationStatus = "Didn't catch that";
+    public const string EmptyDictationDetail = "I didn't hear a question. Hold the pedal while you speak, then try again.";
+    public const string DictationSetupStatus = "Speech setup needed";
+    public const string DictationSetupDetail = "Set up Windows Speech Recognition and a default microphone, then try the pedal again.";
 }

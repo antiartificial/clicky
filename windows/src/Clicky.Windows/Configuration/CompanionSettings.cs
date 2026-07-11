@@ -1,4 +1,5 @@
 using Clicky.Windows.Mvvm;
+using Clicky.Windows.Input;
 using Clicky.Windows.Providers;
 
 namespace Clicky.Windows.Configuration;
@@ -21,6 +22,8 @@ public sealed class CompanionSettings : ObservableObject
     private bool includePointerInCaptures;
     private bool optimizeLargeCaptures = true;
     private bool retainCapturesLocally;
+    private bool motionEffectsEnabled = true;
+    private PushToTalkKey pushToTalkKey = PushToTalkKey.F13;
 
     public Uri WorkerBaseUrl
     {
@@ -92,5 +95,21 @@ public sealed class CompanionSettings : ObservableObject
     {
         get => retainCapturesLocally;
         set => SetProperty(ref retainCapturesLocally, value);
+    }
+
+    public bool MotionEffectsEnabled
+    {
+        get => motionEffectsEnabled;
+        set => SetProperty(ref motionEffectsEnabled, value);
+    }
+
+    public PushToTalkKey PushToTalkKey
+    {
+        get => pushToTalkKey;
+        set
+        {
+            PushToTalkKeyValidator.Validate(value, nameof(value));
+            SetProperty(ref pushToTalkKey, value);
+        }
     }
 }
