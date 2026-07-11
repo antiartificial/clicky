@@ -111,6 +111,30 @@ public sealed class OpenAiResponsesClientTests
     }
 
     [TestMethod]
+    public async Task StreamChatAsync_HttpFailureKeepsOnlySanitizedProviderCode()
+    {
+        const string responseBody =
+            "{\"error\":{\"message\":\"private prompt and sk-test-super-secret\"," +
+            "\"type\":\"invalid_request_error\",\"code\":\"model_not_found\"}}";
+        var handler = new RecordingHandler(responseBody, HttpStatusCode.BadRequest);
+        using var httpClient = new HttpClient(handler);
+        using var client = new OpenAiResponsesClient(
+            httpClient,
+            new FakeApiKeyStore(ApiKey),
+            new CompanionSettings());
+
+        var exception = await Assert.ThrowsExactlyAsync<OpenAiProviderException>(async () =>
+        {
+            await CollectAsync(client.StreamChatAsync(new WorkerChatRequest("ignored", "system", "prompt")));
+        });
+
+        Assert.AreEqual(OpenAiProviderFailureKind.RequestRejected, exception.FailureKind);
+        Assert.AreEqual("model_not_found", exception.ProviderCode);
+        Assert.IsFalse(exception.ToString().Contains(ApiKey, StringComparison.Ordinal));
+        Assert.IsFalse(exception.ToString().Contains("private prompt", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     [DataRow(HttpStatusCode.Forbidden, OpenAiProviderFailureKind.Permission)]
     [DataRow(HttpStatusCode.TooManyRequests, OpenAiProviderFailureKind.RateLimited)]
     [DataRow(HttpStatusCode.BadRequest, OpenAiProviderFailureKind.RequestRejected)]
@@ -198,6 +222,45 @@ public sealed class OpenAiResponsesClientTests
     }
 
     [TestMethod]
+    public async Task StreamChatAsync_TrimsClipboardWhitespaceFromStoredKey()
+    {
+        const string responseSse =
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n";
+        var handler = new RecordingHandler(responseSse);
+        using var httpClient = new HttpClient(handler);
+        using var client = new OpenAiResponsesClient(
+            httpClient,
+            new FakeApiKeyStore($" \t{ApiKey[..8]}\r\n{ApiKey[8..]} \n"),
+            new CompanionSettings());
+
+        await CollectAsync(
+            client.StreamChatAsync(new WorkerChatRequest("ignored", "system", "prompt")));
+
+        Assert.AreEqual(ApiKey, handler.AuthorizationParameter);
+    }
+
+    [TestMethod]
+    public async Task StreamChatAsync_RejectsUnsupportedKeyCharactersBeforeSending()
+    {
+        var handler = new RecordingHandler(string.Empty);
+        using var httpClient = new HttpClient(handler);
+        using var client = new OpenAiResponsesClient(
+            httpClient,
+            new FakeApiKeyStore("sk-valid-prefix-\u00e9"),
+            new CompanionSettings());
+
+        var exception = await Assert.ThrowsExactlyAsync<OpenAiProviderException>(async () =>
+        {
+            await CollectAsync(
+                client.StreamChatAsync(new WorkerChatRequest("ignored", "system", "prompt")));
+        });
+
+        Assert.AreEqual(OpenAiProviderFailureKind.Authentication, exception.FailureKind);
+        Assert.AreEqual("invalid_key_format", exception.ProviderCode);
+        Assert.AreEqual(0, handler.SendCalls);
+    }
+
+    [TestMethod]
     public async Task StreamChatAsync_TransportFailureDoesNotRetainHandlerMessageOrKey()
     {
         var handler = new ThrowingHandler($"transport included {ApiKey}");
@@ -213,6 +276,7 @@ public sealed class OpenAiResponsesClientTests
         });
 
         Assert.AreEqual(OpenAiProviderFailureKind.Transport, exception.FailureKind);
+        Assert.AreEqual("http_transport", exception.ProviderCode);
         Assert.IsFalse(exception.ToString().Contains(ApiKey, StringComparison.Ordinal));
     }
 

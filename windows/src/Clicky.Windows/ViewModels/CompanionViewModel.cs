@@ -1225,8 +1225,31 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         };
     }
 
-    private static (string Status, string Detail) DescribeOpenAIFailure(
-        OpenAiProviderException exception) => exception.FailureKind switch
+    private (string Status, string Detail) DescribeOpenAIFailure(
+        OpenAiProviderException exception)
+    {
+        if (exception.ProviderCode is "insufficient_quota" or "billing_not_active")
+        {
+            return (
+                BrandText.ProviderBusyStatus,
+                "This OpenAI API account has no available credits. Check API billing, then try again.");
+        }
+
+        if (exception.ProviderCode is "model_not_found" or "invalid_model")
+        {
+            return (
+                BrandText.ProviderSetupStatus,
+                $"This key cannot use model {Settings.OpenAIModelId}. Choose another OpenAI model in Settings.");
+        }
+
+        if (exception.ProviderCode == "invalid_key_format")
+        {
+            return (
+                BrandText.ProviderSetupStatus,
+                "The stored OpenAI key contains an unsupported character. Paste it again and replace the saved key.");
+        }
+
+        return exception.FailureKind switch
         {
             OpenAiProviderFailureKind.MissingApiKey or
             OpenAiProviderFailureKind.InvalidConfiguration =>
@@ -1242,8 +1265,14 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             OpenAiProviderFailureKind.Refusal =>
                 ("Couldn't answer", "OpenAI declined that request. Try asking in a different way."),
             _ =>
-                (BrandText.ProviderBusyStatus, "OpenAI could not complete that request. Check the model and try again."),
+                (BrandText.ProviderBusyStatus, DescribeUnknownOpenAIFailure(exception)),
         };
+    }
+
+    private static string DescribeUnknownOpenAIFailure(OpenAiProviderException exception) =>
+        string.IsNullOrWhiteSpace(exception.ProviderCode)
+            ? "OpenAI could not complete that request. Check the model and API billing, then try again."
+            : $"OpenAI rejected that request ({exception.ProviderCode}). Check the model and API billing.";
 
     private static (string Status, string Detail) DescribeGeminiFailure(
         GeminiProviderException exception) => exception.FailureKind switch

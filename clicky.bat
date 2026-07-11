@@ -12,6 +12,7 @@ if "%ACTION%"=="" set "ACTION=run"
 if /i "%ACTION%"=="run" goto run
 if /i "%ACTION%"=="build" goto build
 if /i "%ACTION%"=="test" goto test
+if /i "%ACTION%"=="doctor" goto doctor
 goto usage
 
 :run
@@ -31,8 +32,14 @@ exit /b %ERRORLEVEL%
 "%DOTNET%" test ".\windows\Clicky.Windows.sln" -c Release
 exit /b %ERRORLEVEL%
 
+:doctor
+echo Checking the stored OpenAI credential with a minimal text-only request...
+set "CLICKY_LIVE_OPENAI=1"
+"%DOTNET%" test ".\windows\Clicky.Windows.sln" -c Release --filter "FullyQualifiedName~OpenAiStoredCredentialLiveTests"
+exit /b %ERRORLEVEL%
+
 :usage
-echo Usage: clicky.bat [run^|build^|test]
+echo Usage: clicky.bat [run^|build^|test^|doctor]
 exit /b 2
 
 :failed

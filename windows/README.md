@@ -125,6 +125,7 @@ works from PowerShell:
 .\clicky.bat          # Build and run
 .\clicky.bat build    # Build only
 .\clicky.bat test     # Run the test suite
+.\clicky.bat doctor   # Check the stored OpenAI key and selected model
 ```
 
 The launcher automatically uses the repository-local `.dotnet` SDK when it is
@@ -146,7 +147,7 @@ This checkout also supports a repository-local SDK at `.dotnet`:
 .\.dotnet\dotnet.exe run --project .\windows\src\Clicky.Windows\Clicky.Windows.csproj
 ```
 
-The automated suite uses fake key stores and local HTTP/SSE fixtures. It does not read real Windows credentials or call a live Cloudflare Worker, Anthropic, OpenAI, Gemini, or ElevenLabs API by default. Live-provider behavior therefore requires a separate, deliberate manual verification with the user's own account and billing controls.
+The automated suite uses fake key stores and local HTTP/SSE fixtures. It does not read real Windows credentials or call a live Cloudflare Worker, Anthropic, OpenAI, Gemini, or ElevenLabs API by default. `clicky.bat doctor` is the deliberate exception: it reads the stored OpenAI credential and makes one small, billable text-only request asking for `OK`. It sends no screenshot or conversation history and reports only a sanitized failure category, provider code, and request ID.
 
 ## Current limitations
 

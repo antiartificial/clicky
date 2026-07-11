@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.IO;
+using System.Net.Sockets;
+using System.Security.Authentication;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Clicky.Windows.Configuration;
@@ -12,6 +14,7 @@ namespace Clicky.Windows.Networking;
 public sealed class OpenAiResponsesClient : IWorkerClient, IDisposable
 {
     private static readonly Uri ResponsesEndpoint = new("https://api.openai.com/v1/responses");
+    private const int MaximumErrorDocumentBytes = 16 * 1024;
 
     private readonly HttpClient httpClient;
     private readonly IProviderApiKeyStore apiKeyStore;
@@ -84,6 +87,15 @@ public sealed class OpenAiResponsesClient : IWorkerClient, IDisposable
                 "An OpenAI API key is not configured.");
         }
 
+        apiKey = string.Concat(apiKey.Where(character => !char.IsWhiteSpace(character)));
+        if (apiKey.Any(character => character is < (char)33 or > (char)126))
+        {
+            throw new OpenAiProviderException(
+                OpenAiProviderFailureKind.Authentication,
+                "The stored OpenAI API key contains unsupported characters.",
+                providerCode: "invalid_key_format");
+        }
+
         var payloadBytes = JsonSerializer.SerializeToUtf8Bytes(BuildRequestPayload(request, model));
         using var requestMessage = new HttpRequestMessage(HttpMethod.Post, ResponsesEndpoint);
         requestMessage.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
@@ -108,11 +120,12 @@ public sealed class OpenAiResponsesClient : IWorkerClient, IDisposable
         {
             throw;
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException exception)
         {
             throw new OpenAiProviderException(
                 OpenAiProviderFailureKind.Transport,
-                "The OpenAI request could not be completed.");
+                "The OpenAI request could not be completed.",
+                providerCode: DescribeTransportFailure(exception));
         }
 
         using (response)
@@ -120,7 +133,10 @@ public sealed class OpenAiResponsesClient : IWorkerClient, IDisposable
             var requestId = ReadRequestId(response);
             if (!response.IsSuccessStatusCode)
             {
-                throw BuildHttpFailure(response.StatusCode, requestId);
+                var providerCode = await ReadErrorCodeAsync(
+                    response.Content,
+                    cancellationToken).ConfigureAwait(false);
+                throw BuildHttpFailure(response.StatusCode, requestId, providerCode);
             }
 
             Stream responseStream;
@@ -249,7 +265,8 @@ public sealed class OpenAiResponsesClient : IWorkerClient, IDisposable
 
     private static OpenAiProviderException BuildHttpFailure(
         HttpStatusCode statusCode,
-        string? requestId)
+        string? requestId,
+        string? providerCode)
     {
         var failureKind = statusCode switch
         {
@@ -264,12 +281,88 @@ public sealed class OpenAiResponsesClient : IWorkerClient, IDisposable
             failureKind,
             $"OpenAI rejected the request with HTTP {(int)statusCode}.",
             statusCode,
-            requestId);
+            requestId,
+            providerCode);
     }
+
+    private static async Task<string?> ReadErrorCodeAsync(
+        HttpContent content,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var responseStream = await content
+                .ReadAsStreamAsync(cancellationToken)
+                .ConfigureAwait(false);
+            using var errorDocumentBuffer = new MemoryStream();
+            var readBuffer = new byte[4096];
+            while (errorDocumentBuffer.Length < MaximumErrorDocumentBytes)
+            {
+                var remainingBytes = MaximumErrorDocumentBytes - (int)errorDocumentBuffer.Length;
+                var bytesRead = await responseStream.ReadAsync(
+                    readBuffer.AsMemory(0, Math.Min(readBuffer.Length, remainingBytes)),
+                    cancellationToken).ConfigureAwait(false);
+                if (bytesRead == 0)
+                {
+                    break;
+                }
+
+                errorDocumentBuffer.Write(readBuffer, 0, bytesRead);
+            }
+
+            using var document = JsonDocument.Parse(errorDocumentBuffer.ToArray());
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("error", out var error) ||
+                error.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            return ReadString(error, "code") ?? ReadString(error, "type");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is IOException or HttpRequestException or JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? ReadString(JsonElement element, string propertyName) =>
+        element.TryGetProperty(propertyName, out var property) &&
+        property.ValueKind == JsonValueKind.String
+            ? OpenAiProviderException.SanitizeIdentifier(property.GetString(), 64)
+            : null;
 
     private static OpenAiProviderException TransportFailure(string? requestId) =>
         new(
             OpenAiProviderFailureKind.Transport,
             "The OpenAI response stream could not be read.",
             requestId: requestId);
+
+    private static string DescribeTransportFailure(HttpRequestException exception)
+    {
+        if (exception.HttpRequestError != HttpRequestError.Unknown)
+        {
+            return $"transport_{exception.HttpRequestError}";
+        }
+
+        Exception rootCause = exception;
+        while (rootCause.InnerException is not null)
+        {
+            rootCause = rootCause.InnerException;
+        }
+
+        return rootCause switch
+        {
+            SocketException socketException => $"socket_{socketException.SocketErrorCode}",
+            AuthenticationException => "tls_authentication",
+            HttpRequestException => "http_transport",
+            _ => $"transport_{rootCause.GetType().Name}",
+        };
+    }
 }
