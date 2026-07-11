@@ -1,0 +1,25 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Clicky.Windows", "src\Clicky.Windows\Clicky.Windows.csproj", "{4D071A55-691B-4621-8E5C-0E43E1BE6768}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Clicky.Windows.Tests", "tests\Clicky.Windows.Tests\Clicky.Windows.Tests.csproj", "{3E0D01C2-BB87-4934-9E61-D61E5359A152}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4D071A55-691B-4621-8E5C-0E43E1BE6768}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4D071A55-691B-4621-8E5C-0E43E1BE6768}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4D071A55-691B-4621-8E5C-0E43E1BE6768}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4D071A55-691B-4621-8E5C-0E43E1BE6768}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3E0D01C2-BB87-4934-9E61-D61E5359A152}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3E0D01C2-BB87-4934-9E61-D61E5359A152}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3E0D01C2-BB87-4934-9E61-D61E5359A152}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3E0D01C2-BB87-4934-9E61-D61E5359A152}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
