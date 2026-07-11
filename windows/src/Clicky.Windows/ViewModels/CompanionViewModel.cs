@@ -19,7 +19,7 @@ namespace Clicky.Windows.ViewModels;
 public sealed class CompanionViewModel : ObservableObject, IDisposable
 {
     private const double CompactWindowHeight = 190;
-    private const double SettingsWindowHeight = 500;
+    private const double SettingsWindowHeight = 536;
 
     private readonly CompanionSessionCoordinator sessionCoordinator;
     private readonly TutorInteractionService tutorInteractionService;
