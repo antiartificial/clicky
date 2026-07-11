@@ -10,12 +10,14 @@ public static class BrandText
     public const string SettingsHeading = "Settings";
     public const string ConversationHeading = "Conversation";
     public const string ConversationTooltip = "Conversation";
-    public const string ClearConversationTooltip = "Clear conversation";
-    public const string EmptyConversation = "No conversation yet.";
+    public const string ClearConversationTooltip = "Start a new conversation";
+    public const string ConversationHistoryLabel = "Past conversations";
+    public const string EmptyConversation = "No conversation selected.";
     public const string AiProviderLabel = "AI provider";
     public const string WorkerProviderLabel = "Worker";
     public const string AnthropicProviderLabel = "Anthropic";
     public const string OpenAIProviderLabel = "OpenAI";
+    public const string GeminiProviderLabel = "Gemini";
     public const string WorkerBaseUrlLabel = "Worker URL";
     public const string ModelIdLabel = "Model ID";
     public const string ApiKeyLabel = "API key";
@@ -30,6 +32,10 @@ public static class BrandText
     public const string ApiKeySaveFailed = "Could not save the key in Windows Credential Manager.";
     public const string ApiKeyRemoveFailed = "Could not remove the key from Windows Credential Manager.";
     public const string ApiKeyStatusFailed = "Could not read key status from Windows Credential Manager.";
+    public const string SpeechOutputLabel = "Read answers aloud";
+    public const string SpeechProviderLabel = "Voice provider";
+    public const string VoiceLabel = "Voice";
+    public const string ElevenLabsVoiceIdLabel = "ElevenLabs voice ID";
     public const string CaptureScopeLabel = "Capture scope";
     public const string ActiveWindowCaptureScope = "Active window";
     public const string MotionEffectsLabel = "Motion effects";

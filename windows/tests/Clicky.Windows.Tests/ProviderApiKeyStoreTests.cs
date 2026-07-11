@@ -16,6 +16,12 @@ public sealed class ProviderApiKeyStoreTests
             "Clicky/ProviderApiKey/v1/openai",
             WindowsCredentialApiKeyStore.GetCredentialTargetName(AiProviderKind.OpenAI));
         Assert.AreEqual(
+            "Clicky/ProviderApiKey/v1/gemini",
+            WindowsCredentialApiKeyStore.GetCredentialTargetName(AiProviderKind.Gemini));
+        Assert.AreEqual(
+            "Clicky/ProviderApiKey/v1/elevenlabs",
+            WindowsCredentialApiKeyStore.GetCredentialTargetName(AiProviderKind.ElevenLabs));
+        Assert.AreEqual(
             "Knobnote/ProviderApiKey/v1/anthropic",
             WindowsCredentialApiKeyStore.GetLegacyCredentialTargetName(AiProviderKind.Anthropic));
         Assert.AreEqual(
@@ -37,6 +43,8 @@ public sealed class ProviderApiKeyStoreTests
     {
         WindowsCredentialApiKeyStore.ValidateApiKey(AiProviderKind.Anthropic, "anthropic-key");
         WindowsCredentialApiKeyStore.ValidateApiKey(AiProviderKind.OpenAI, "openai-key");
+        WindowsCredentialApiKeyStore.ValidateApiKey(AiProviderKind.Gemini, "gemini-key");
+        WindowsCredentialApiKeyStore.ValidateApiKey(AiProviderKind.ElevenLabs, "elevenlabs-key");
     }
 
     [TestMethod]

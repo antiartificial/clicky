@@ -142,6 +142,8 @@ public sealed class WindowsCredentialApiKeyStore : IProviderApiKeyStore
         {
             AiProviderKind.Anthropic => $"{CredentialTargetPrefix}/anthropic",
             AiProviderKind.OpenAI => $"{CredentialTargetPrefix}/openai",
+            AiProviderKind.Gemini => $"{CredentialTargetPrefix}/gemini",
+            AiProviderKind.ElevenLabs => $"{CredentialTargetPrefix}/elevenlabs",
             AiProviderKind.Worker => throw new ArgumentException(
                 "The Worker provider does not accept a locally stored API key.",
                 nameof(provider)),
@@ -156,6 +158,8 @@ public sealed class WindowsCredentialApiKeyStore : IProviderApiKeyStore
         {
             AiProviderKind.Anthropic => $"{LegacyCredentialTargetPrefix}/anthropic",
             AiProviderKind.OpenAI => $"{LegacyCredentialTargetPrefix}/openai",
+            AiProviderKind.Gemini => $"{LegacyCredentialTargetPrefix}/gemini",
+            AiProviderKind.ElevenLabs => $"{LegacyCredentialTargetPrefix}/elevenlabs",
             AiProviderKind.Worker => throw new ArgumentException(
                 "The Worker provider does not accept a locally stored API key.",
                 nameof(provider)),

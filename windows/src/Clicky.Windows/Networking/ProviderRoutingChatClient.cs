@@ -9,22 +9,26 @@ public sealed class ProviderRoutingChatClient : IWorkerClient
     private readonly IWorkerClient workerClient;
     private readonly IWorkerClient anthropicClient;
     private readonly IWorkerClient openAIClient;
+    private readonly IWorkerClient geminiClient;
 
     public ProviderRoutingChatClient(
         CompanionSettings settings,
         IWorkerClient workerClient,
         IWorkerClient anthropicClient,
-        IWorkerClient openAIClient)
+        IWorkerClient openAIClient,
+        IWorkerClient geminiClient)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(workerClient);
         ArgumentNullException.ThrowIfNull(anthropicClient);
         ArgumentNullException.ThrowIfNull(openAIClient);
+        ArgumentNullException.ThrowIfNull(geminiClient);
 
         this.settings = settings;
         this.workerClient = workerClient;
         this.anthropicClient = anthropicClient;
         this.openAIClient = openAIClient;
+        this.geminiClient = geminiClient;
     }
 
     public IAsyncEnumerable<string> StreamChatAsync(
@@ -39,6 +43,7 @@ public sealed class ProviderRoutingChatClient : IWorkerClient
             AiProviderKind.Worker => workerClient,
             AiProviderKind.Anthropic => anthropicClient,
             AiProviderKind.OpenAI => openAIClient,
+            AiProviderKind.Gemini => geminiClient,
             _ => throw new InvalidOperationException("The selected AI provider is not supported."),
         };
 

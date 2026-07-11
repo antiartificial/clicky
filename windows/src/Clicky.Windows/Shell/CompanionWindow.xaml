@@ -1318,7 +1318,8 @@
                         </TextBlock>
                     </Grid>
 
-                    <TextBlock Grid.Row="1"
+                    <TextBlock x:Name="StatusDetailTextBlock"
+                               Grid.Row="1"
                                MinHeight="16"
                                MaxHeight="32"
                                Margin="45,2,0,0"
@@ -1329,7 +1330,11 @@
                                LineStackingStrategy="BlockLineHeight"
                                TextWrapping="Wrap"
                                Foreground="{StaticResource WarmWhiteBrush}"
-                               Opacity="0.58" />
+                               Opacity="0.58">
+                        <TextBlock.RenderTransform>
+                            <TranslateTransform x:Name="StatusDetailTranslateTransform" />
+                        </TextBlock.RenderTransform>
+                    </TextBlock>
                 </Grid>
 
                 <Button Grid.Column="3"
@@ -1407,6 +1412,7 @@
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="30" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
@@ -1441,9 +1447,82 @@
                         </Button>
                     </Grid>
 
+                    <ListBox Grid.Row="1"
+                             Height="92"
+                             Margin="0,7,0,0"
+                             Padding="0"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             ItemsSource="{Binding StoredConversations}"
+                             SelectedItem="{Binding SelectedStoredConversation, Mode=TwoWay}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             Visibility="{Binding HasStoredConversations, Converter={StaticResource BooleanToVisibilityConverter}}"
+                             AutomationProperties.Name="{x:Static branding:BrandText.ConversationHistoryLabel}">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="7,5" />
+                                <Setter Property="Margin" Value="0,0,0,3" />
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="Foreground" Value="{StaticResource WarmWhiteBrush}" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="HistorySurface"
+                                                    Padding="{TemplateBinding Padding}"
+                                                    Background="{TemplateBinding Background}"
+                                                    BorderBrush="{StaticResource GraphiteLineBrush}"
+                                                    BorderThickness="0,0,0,1">
+                                                <ContentPresenter />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="HistorySurface" Property="Background" Value="{StaticResource GraphiteRaisedBrush}" />
+                                                </Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="HistorySurface" Property="Background" Value="{StaticResource GraphiteRaisedBrush}" />
+                                                    <Setter TargetName="HistorySurface" Property="BorderBrush" Value="{StaticResource StudioTealBrush}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource WarmWhiteBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Text="{Binding Title, TargetNullValue=Untitled conversation}" />
+                                        <TextBlock Margin="0,2,0,0"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource WarmWhiteBrush}"
+                                                   Opacity="0.55"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Text="{Binding RollingSummary, TargetNullValue=No summary yet}" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1"
+                                               Margin="8,0,0,0"
+                                               FontSize="9"
+                                               Foreground="{StaticResource StudioTealBrush}"
+                                               Text="{Binding Provider}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
                     <ScrollViewer x:Name="ConversationScrollViewer"
-                                  Grid.Row="1"
-                                  Height="300"
+                                  Grid.Row="2"
+                                  Height="205"
                                   Margin="0,8,0,0"
                                   VerticalAlignment="Top"
                                   HorizontalScrollBarVisibility="Disabled"
@@ -1568,12 +1647,12 @@
                                Foreground="{StaticResource WarmWhiteBrush}"
                                Opacity="0.62" />
                     <UniformGrid Columns="3" Margin="0,0,0,10">
-                        <Button Click="WorkerProviderButton_Click"
-                                AutomationProperties.Name="{x:Static branding:BrandText.WorkerProviderLabel}">
+                        <Button Click="GeminiProviderButton_Click"
+                                AutomationProperties.Name="{x:Static branding:BrandText.GeminiProviderLabel}">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource ProviderSegmentStyle}">
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsWorkerProvider}" Value="True">
+                                        <DataTrigger Binding="{Binding IsGeminiProvider}" Value="True">
                                             <Setter Property="Background" Value="{StaticResource SignalLimeBrush}" />
                                             <Setter Property="BorderBrush" Value="{StaticResource SignalLimeBrush}" />
                                             <Setter Property="Foreground" Value="{StaticResource GraphiteBrush}" />
@@ -1583,19 +1662,20 @@
                                 </Style>
                             </Button.Style>
                             <StackPanel Orientation="Horizontal">
-                                <Viewbox Width="16" Height="17" VerticalAlignment="Center">
-                                    <Canvas Width="48" Height="49">
-                                        <Path Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                              Data="M18.63,37.418 8.985,24.518 18.577,11.985 16.725,9.458 5.917,23.595 5.902,25.403 16.762,39.945Z" />
-                                        <Path Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                              Data="M21.997,6.503 18.285,6.503 31.672,24.803 18.6,42.503 22.335,42.503 35.4,24.81Z" />
-                                        <Path Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                              Data="M29.175,6.503 25.417,6.503 39.015,24.585 25.417,42.503 29.182,42.503 42.09,25.493 42.09,23.685Z" />
-                                    </Canvas>
+                                <Viewbox Width="16" Height="16" VerticalAlignment="Center">
+                                    <Path Data="M12,0 C12,6.6 17.4,12 24,12 C17.4,12 12,17.4 12,24 C12,17.4 6.6,12 0,12 C6.6,12 12,6.6 12,0 Z">
+                                        <Path.Fill>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Offset="0" Color="#4CA7FF" />
+                                                <GradientStop Offset="0.48" Color="#9B7BFF" />
+                                                <GradientStop Offset="1" Color="#FF7EB6" />
+                                            </LinearGradientBrush>
+                                        </Path.Fill>
+                                    </Path>
                                 </Viewbox>
                                 <TextBlock Margin="4,0,0,0"
                                            VerticalAlignment="Center"
-                                           Text="{x:Static branding:BrandText.WorkerProviderLabel}" />
+                                           Text="{x:Static branding:BrandText.GeminiProviderLabel}" />
                             </StackPanel>
                         </Button>
                         <Button Margin="4,0"
@@ -1804,6 +1884,130 @@
                                        Text="{Binding ApiKeyStatusText}" />
                         </Grid>
                     </StackPanel>
+
+                    <StackPanel Visibility="{Binding IsGeminiProvider, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <TextBlock Text="{x:Static branding:BrandText.ModelIdLabel}"
+                                   Margin="0,0,0,4"
+                                   FontSize="11"
+                                   Foreground="{StaticResource WarmWhiteBrush}"
+                                   Opacity="0.62" />
+                        <TextBox Margin="0,0,0,8"
+                                 Style="{StaticResource SettingsTextBoxStyle}"
+                                 AutomationProperties.Name="Gemini model ID"
+                                 Text="{Binding Settings.GeminiModelId, UpdateSourceTrigger=LostFocus}" />
+                    </StackPanel>
+
+                    <Border Height="42"
+                            Margin="0,0,0,8"
+                            Background="{StaticResource GraphiteRaisedBrush}"
+                            BorderBrush="{StaticResource GraphiteLineBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6">
+                        <Grid Margin="9,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock VerticalAlignment="Center"
+                                       FontSize="11"
+                                       Foreground="{StaticResource WarmWhiteBrush}"
+                                       Text="{x:Static branding:BrandText.SpeechOutputLabel}" />
+                            <ToggleButton Grid.Column="1"
+                                          VerticalAlignment="Center"
+                                          Style="{StaticResource MotionToggleStyle}"
+                                          IsChecked="{Binding Settings.SpeechOutputEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          AutomationProperties.Name="{x:Static branding:BrandText.SpeechOutputLabel}" />
+                        </Grid>
+                    </Border>
+
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="112" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Margin="0,0,0,4"
+                                       FontSize="11"
+                                       Foreground="{StaticResource WarmWhiteBrush}"
+                                       Opacity="0.62"
+                                       Text="{x:Static branding:BrandText.SpeechProviderLabel}" />
+                            <ComboBox Height="30"
+                                      Padding="6,2"
+                                      Background="{StaticResource GraphiteBrush}"
+                                      BorderBrush="{StaticResource GraphiteLineBrush}"
+                                      Foreground="{StaticResource GraphiteBrush}"
+                                      ItemsSource="{Binding TextToSpeechProviders}"
+                                      SelectedItem="{Binding Settings.TextToSpeechProvider, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      AutomationProperties.Name="{x:Static branding:BrandText.SpeechProviderLabel}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2"
+                                    Visibility="{Binding IsOpenAISpeechProvider, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock Margin="0,0,0,4"
+                                       FontSize="11"
+                                       Foreground="{StaticResource WarmWhiteBrush}"
+                                       Opacity="0.62"
+                                       Text="{x:Static branding:BrandText.VoiceLabel}" />
+                            <TextBox Height="30"
+                                     Style="{StaticResource SettingsTextBoxStyle}"
+                                     AutomationProperties.Name="OpenAI voice"
+                                     Text="{Binding Settings.OpenAITtsVoice, UpdateSourceTrigger=LostFocus}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2"
+                                    Visibility="{Binding IsElevenLabsSpeechProvider, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock Margin="0,0,0,4"
+                                       FontSize="11"
+                                       Foreground="{StaticResource WarmWhiteBrush}"
+                                       Opacity="0.62"
+                                       Text="{x:Static branding:BrandText.ElevenLabsVoiceIdLabel}" />
+                            <TextBox Height="30"
+                                     Style="{StaticResource SettingsTextBoxStyle}"
+                                     AutomationProperties.Name="{x:Static branding:BrandText.ElevenLabsVoiceIdLabel}"
+                                     Text="{Binding Settings.ElevenLabsVoiceId, UpdateSourceTrigger=LostFocus}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,8"
+                          Visibility="{Binding IsElevenLabsSpeechProvider, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="76" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <PasswordBox x:Name="ElevenLabsApiKeyPasswordBox"
+                                     Height="30"
+                                     Padding="8,5"
+                                     Background="{StaticResource GraphiteRaisedBrush}"
+                                     BorderBrush="{StaticResource GraphiteLineBrush}"
+                                     BorderThickness="1"
+                                     Foreground="{StaticResource WarmWhiteBrush}"
+                                     CaretBrush="{StaticResource SignalLimeBrush}"
+                                     IsEnabled="{Binding CanSaveElevenLabsApiKey}"
+                                     AutomationProperties.Name="ElevenLabs API key" />
+                        <TextBlock Grid.Column="1"
+                                   Margin="7,0"
+                                   VerticalAlignment="Center"
+                                   TextAlignment="Right"
+                                   TextTrimming="CharacterEllipsis"
+                                   FontSize="10"
+                                   Foreground="{StaticResource WarmWhiteBrush}"
+                                   Opacity="0.64"
+                                   IsHitTestVisible="False"
+                                   Text="{Binding ElevenLabsApiKeyStatusText}" />
+                        <Button Grid.Column="2"
+                                Style="{StaticResource SettingsActionButtonStyle}"
+                                IsEnabled="{Binding CanSaveElevenLabsApiKey}"
+                                Click="SaveElevenLabsApiKeyButton_Click"
+                                Content="Save" />
+                        <Button Grid.Column="3"
+                                Style="{StaticResource SettingsActionButtonStyle}"
+                                Margin="6,0,0,0"
+                                Background="Transparent"
+                                BorderBrush="{StaticResource GraphiteLineBrush}"
+                                Click="RemoveElevenLabsApiKeyButton_Click"
+                                Content="Remove" />
+                    </Grid>
 
                     <Border Height="42"
                             Margin="0,0,0,8"

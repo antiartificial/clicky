@@ -2,7 +2,7 @@
 
 ## Scope
 
-The Windows subtree is a .NET 10 prototype of Clicky as a typed and foot-pedal voice, screenshot-grounded visual guide for any active desktop application. It can help with interfaces such as Adobe apps, Visual Studio, or Rive based on what is visible; these are examples, not application-specific integrations. It can share the existing Cloudflare Worker contract or connect directly to Anthropic and OpenAI. It is otherwise separate from the Swift/macOS application. It currently covers capture and adaptive encoding, typed input, local `System.Speech` dictation, global pedal monitoring, multi-provider streaming chat, response parsing, coordinate mapping, optional cue motion, secure local key storage, settings UI, startup splash, and tray lifecycle. TTS/audio, non-secret settings persistence, and packaging are outside the implemented scope.
+The Windows subtree is a .NET 10 prototype of Clicky as a typed and foot-pedal voice, screenshot-grounded visual guide for any active desktop application. It can help with interfaces such as Adobe apps, Visual Studio, or Rive based on what is visible; these are examples, not application-specific integrations. Its primary path is local-first BYOK through direct OpenAI, Anthropic, or Gemini APIs; the Cloudflare Worker contract remains a compatibility transport. It is otherwise separate from the Swift/macOS application. It currently covers capture and adaptive encoding, typed input, local `System.Speech` dictation, global pedal monitoring, multi-provider streaming chat, progressive text presentation, SQLite conversation history, optional OpenAI/ElevenLabs speech output, response parsing, coordinate mapping, optional cue motion, secure local key storage, persisted non-secret settings, startup splash, and tray lifecycle. Packaging remains outside the implemented scope.
 
 ## Runtime shape
 
@@ -10,8 +10,10 @@ The Windows subtree is a .NET 10 prototype of Clicky as a typed and foot-pedal v
 - **Tray:** Windows Forms `NotifyIcon` hosted alongside WPF.
 - **Composition:** `App.xaml.cs` constructs the services and view model directly at startup.
 - **State:** `CompanionSessionCoordinator` owns the `Idle -> Listening -> Processing -> Responding` state machine and interaction IDs.
-- **Routing:** `ProviderRoutingChatClient` selects Worker, Anthropic, or OpenAI from `CompanionSettings` before an async response is enumerated.
-- **Networking:** one settings-aware Worker client plus dedicated no-redirect direct-provider clients stream text over SSE.
+- **Routing:** `ProviderRoutingChatClient` selects Worker, Anthropic, OpenAI, or Gemini from `CompanionSettings` before an async response is enumerated. The current Windows selector exposes the three direct providers.
+- **Networking:** one compatibility Worker client plus dedicated no-redirect direct-provider clients stream text over SSE.
+- **Persistence:** `SqliteConversationRepository` owns versioned local conversation storage; `CompanionSettingsStore` atomically persists non-secret preferences as JSON.
+- **Speech output:** `ProviderRoutingTextToSpeechClient` selects OpenAI or ElevenLabs synthesis and `WaveAudioPlaybackService` serializes cancellable playback.
 - **Voice:** `GlobalPushToTalkMonitor` supplies global F13-F24 press/release transitions and `SystemSpeechDictationTranscriber` performs local dictation through the default microphone.
 - **Motion:** `CompanionMotionPolicy` enables cue motion only when the default-on app setting and Windows client-area animations are both enabled.
 - **Secrets:** `WindowsCredentialApiKeyStore` uses the Win32 Credential Manager API for provider-specific generic credentials.
@@ -36,6 +38,7 @@ User clicks the primary action or presses the configured pedal key
        -> SettingsAwareWorkerClient -> CloudflareWorkerClient
        -> AnthropicDirectApiClient
        -> OpenAiResponsesClient
+       -> GeminiDirectApiClient
     -> selected client sends the JPEG, question, prompt, and history
     -> selected SSE reader yields text deltas
     -> PointResponseParser removes the required terminal POINT directive
@@ -46,7 +49,7 @@ User clicks the primary action or presses the configured pedal key
 
 Capturing before question-field focus is intentional. If the companion activated first, the foreground-window capture service would capture Clicky instead of the application the user is asking about. A pedal press starts dictation and capture preparation together; release finalizes the transcript before the shared response path sends it through the selected chat provider.
 
-`ProviderRoutingChatClient` resolves the selected client before returning the response enumerable. The provider therefore cannot change midway through one stream. Selecting another provider through the view model first cancels the current or prepared interaction, clears the tutor's in-memory history, updates the selection, and refreshes that provider's key status.
+`ProviderRoutingChatClient` resolves the selected client before returning the response enumerable. The provider therefore cannot change midway through one stream. Selecting another provider through the view model first cancels the current or prepared interaction, starts a fresh active context, updates the selection, and refreshes that provider's key status. Previously completed conversations remain in SQLite.
 
 ## Capture and coordinates
 
@@ -60,13 +63,13 @@ This is screen copying, not an occlusion-independent window capture API. Covered
 
 ## Provider routing and contracts
 
-All three transports implement the existing `IWorkerClient`/`WorkerChatRequest` abstraction. The names are historical; direct providers do not pass through the Worker. `TutorInteractionService` builds one provider-neutral logical request containing the generic `VisualGuideTutor` system prompt, active-window title, current question, active-window JPEG, up to 10 in-memory user/assistant turns, and a 1024-token output limit.
+All four transports implement the existing `IWorkerClient`/`WorkerChatRequest` abstraction. The names are historical; direct providers do not pass through the Worker. `TutorInteractionService` builds one provider-neutral logical request containing the generic `VisualGuideTutor` system prompt, active-window title, current question, active-window JPEG, up to 10 active user/assistant turns, and a 1024-token output limit. `PointDirectiveStreamingFilter` emits visible deltas immediately while withholding a possibly fragmented terminal pointer directive.
 
 ## Voice input
 
 `GlobalPushToTalkMonitor` installs a system-wide low-level keyboard hook for the selected F13-F24 key, default F13, and publishes one press/release transition per physical hold. Changing the in-memory pedal setting updates the monitored key.
 
-`SystemSpeechDictationTranscriber` loads a local `DictationGrammar`, uses the default audio input, and accumulates recognized phrases. It requires an installed Windows recognition language and a usable default microphone. Recognition starts on pedal press; pedal release stops recognition, finalizes the transcript, and routes the text through the same selected Worker, Anthropic, or OpenAI chat path as a typed question. Dictation is local, but the finalized transcript becomes provider request content. There is no TTS or audio playback path.
+`SystemSpeechDictationTranscriber` loads a local `DictationGrammar`, uses the default audio input, and accumulates recognized phrases. It requires an installed Windows recognition language and a usable default microphone. Recognition starts on pedal press; pedal release stops recognition, finalizes the transcript, and routes the text through the same selected direct chat path as a typed question. Dictation is local, but the finalized transcript becomes provider request content. When speech output is enabled, a successful answer is synthesized through OpenAI or ElevenLabs and played as WAV; a new interaction cancels active playback.
 
 ### Worker
 
@@ -103,6 +106,20 @@ It retrieves the OpenAI key from Credential Manager for each request and sends i
 `OpenAiResponsesSseReader` yields `response.output_text.delta` content and requires `response.completed`. Refusals, incomplete/failed responses, malformed or oversized events, premature EOF, transport failures, and server-side stream errors become typed, sanitized failures.
 
 Direct endpoints are constants rather than user settings. Disabling redirects prevents the clients from forwarding their authentication headers to a redirect destination. Direct-provider exceptions expose safe categories, HTTP status, and sanitized request identifiers where available; they do not include API keys or arbitrary response bodies.
+
+### Gemini direct
+
+`GeminiDirectApiClient` posts to the escaped v1beta `models/{model}:streamGenerateContent?alt=sse` endpoint with `x-goog-api-key`. It maps history to alternating `user`/`model` contents, sends JPEG bytes through `inline_data`, includes the system instruction and output limit, and requires a terminal `STOP` finish reason. Transport, protocol, safety, rate-limit, and incomplete states become bounded typed failures.
+
+### Local conversations and settings
+
+`SqliteConversationRepository` creates `%LocalAppData%\Clicky\clicky.db`, enables foreign keys and WAL, and migrates through `PRAGMA user_version`. A successful turn stores user/assistant text plus provider, model, window title, timestamps, a bounded title, and a rolling answer preview. Screenshots and API keys have no database fields. The conversation pane lists stored sessions newest-first and loads complete transcripts on selection.
+
+`CompanionSettingsStore` loads and atomically replaces `%LocalAppData%\Clicky\settings.json`. It contains only non-secret provider/model, capture, motion, pedal, and speech preferences. API keys remain in Windows Credential Manager.
+
+### Speech output
+
+`OpenAiSpeechClient` requests WAV from `/v1/audio/speech` using the existing OpenAI credential. `ElevenLabsSpeechClient` uses a separate Credential Manager key and escaped custom voice ID. `ProviderRoutingTextToSpeechClient` snapshots the selected speech provider for each synthesis, and `WaveAudioPlaybackService` validates the RIFF/WAVE container, serializes playback, supports cancellation, and does not activate UI.
 
 ## Credential boundary
 
@@ -151,7 +168,7 @@ Provider controls are enabled only while Settings is visible and the session is 
 
 The visible Settings surface exposes:
 
-- a segmented Worker/Anthropic/OpenAI provider selector
+- a segmented Gemini/Anthropic/OpenAI provider selector
 - Worker URL in Worker mode
 - provider-specific Model ID and masked API-key controls in direct mode
 - a default-on `Motion` toggle combined with the Windows reduced-motion preference
@@ -167,7 +184,7 @@ The visible Settings surface exposes:
 - include pointer: off
 - retain captures locally: off
 
-The current capture path always takes one foreground-window JPEG during request preparation, does not write it to disk, does not explicitly draw the pointer, and does not explicitly remove visible Clicky pixels. Capture-before-focus preserves the user's foreground HWND; it is not window-content exclusion. Large-capture optimization is the only visible capture-policy toggle; the five other capture fields remain reserved internal defaults and do not imply that multiple capture scopes already exist. All non-secret settings, including motion and pedal key, remain memory-only and reset on restart.
+The current capture path always takes one foreground-window JPEG during request preparation, does not write it to disk, does not explicitly draw the pointer, and does not explicitly remove visible Clicky pixels. Capture-before-focus preserves the user's foreground HWND; it is not window-content exclusion. Large-capture optimization is the only visible capture-policy toggle; the five other capture fields remain reserved internal defaults and do not imply that multiple capture scopes already exist. Non-secret settings persist locally; keys remain in Credential Manager.
 
 ## Key files
 
@@ -192,8 +209,13 @@ The current capture path always takes one foreground-window JPEG during request 
 | `src/Clicky.Windows/Networking/CloudflareWorkerClient.cs` | Secure Worker URL validation, `/chat` serialization, and streaming response. |
 | `src/Clicky.Windows/Networking/AnthropicDirectApiClient.cs` | Fixed-endpoint Anthropic Messages request and direct authentication. |
 | `src/Clicky.Windows/Networking/OpenAiResponsesClient.cs` | Fixed-endpoint OpenAI Responses request and direct authentication. |
+| `src/Clicky.Windows/Networking/GeminiDirectApiClient.cs` | Fixed-endpoint Gemini streaming request and direct authentication. |
 | `src/Clicky.Windows/Networking/AnthropicSseReader.cs` | Worker-compatible and strict direct Anthropic SSE parsing. |
 | `src/Clicky.Windows/Networking/OpenAiResponsesSseReader.cs` | Strict OpenAI Responses SSE parsing. |
+| `src/Clicky.Windows/Networking/GeminiSseReader.cs` | Strict Gemini SSE candidate parsing and completion validation. |
+| `src/Clicky.Windows/Persistence/` | Versioned SQLite conversation repository and persistence records. |
+| `src/Clicky.Windows/Speech/` | OpenAI/ElevenLabs synthesis routing and cancellable WAV playback. |
+| `src/Clicky.Windows/Configuration/CompanionSettingsStore.cs` | Atomic non-secret settings persistence. |
 | `src/Clicky.Windows/Providers/WindowsCredentialApiKeyStore.cs` | Provider-specific Windows Credential Manager storage. |
 | `src/Clicky.Windows/Configuration/CompanionSettings.cs` | In-memory provider, URL, model, capture optimization, and privacy defaults. |
 | `src/Clicky.Windows/Pointing/PointResponseParser.cs` | Terminal `POINT` extraction. |
@@ -224,6 +246,6 @@ Or use the repository-local SDK:
 .\.dotnet\dotnet.exe run --project .\windows\src\Clicky.Windows\Clicky.Windows.csproj
 ```
 
-Automated tests use fake credential stores and local HTTP/SSE handlers. They validate routing, request bodies, authentication placement, stream termination, errors, settings transitions, and UI/view-model behavior without reading a real key or making live, billable Worker, Anthropic, or OpenAI requests. Live account permissions and model availability are therefore outside the default suite.
+Automated tests use fake credential stores, isolated SQLite files, and local HTTP/SSE handlers. They validate routing, request bodies, authentication placement, stream termination, persistence, speech playback, errors, settings transitions, and UI/view-model behavior without reading a real key or making live, billable provider requests. Live account permissions and model availability are therefore outside the default suite.
 
-The Windows subtree does not change the macOS Xcode workflow. It also has no installer project, TTS/audio playback, or startup sound yet. The default automated suite is not live Worker, Anthropic, or OpenAI E2E verification.
+The Windows subtree does not change the macOS Xcode workflow. It has no installer project or startup sound yet. The default automated suite is not live provider E2E verification.

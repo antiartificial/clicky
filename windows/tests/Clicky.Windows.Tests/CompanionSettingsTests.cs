@@ -1,5 +1,6 @@
 using Clicky.Windows.Configuration;
 using Clicky.Windows.Input;
+using Clicky.Windows.Providers;
 
 namespace Clicky.Windows.Tests;
 
@@ -12,6 +13,9 @@ public sealed class CompanionSettingsTests
         var settings = new CompanionSettings();
 
         Assert.AreEqual(CompanionSettings.DefaultWorkerBaseUrl, settings.WorkerBaseUrl);
+        Assert.AreEqual(AiProviderKind.OpenAI, settings.SelectedProvider);
+        Assert.IsFalse(settings.SpeechOutputEnabled);
+        Assert.AreEqual(TextToSpeechProviderKind.OpenAI, settings.TextToSpeechProvider);
         Assert.IsFalse(settings.CaptureAllDisplays);
         Assert.IsTrue(settings.CaptureOnlyDuringActiveRequest);
         Assert.IsTrue(settings.ExcludeCompanionWindows);

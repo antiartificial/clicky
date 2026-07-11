@@ -9,9 +9,11 @@ using Clicky.Windows.Motion;
 using Clicky.Windows.Mvvm;
 using Clicky.Windows.Networking;
 using Clicky.Windows.Overlay;
+using Clicky.Windows.Persistence;
 using Clicky.Windows.Pointing;
 using Clicky.Windows.Providers;
 using Clicky.Windows.Session;
+using Clicky.Windows.Speech;
 using Clicky.Windows.Voice;
 
 namespace Clicky.Windows.ViewModels;
@@ -19,7 +21,7 @@ namespace Clicky.Windows.ViewModels;
 public sealed class CompanionViewModel : ObservableObject, IDisposable
 {
     private const double CompactWindowHeight = 190;
-    private const double SettingsWindowHeight = 536;
+    private const double SettingsWindowHeight = 680;
     private const double ConversationWindowHeight = 520;
 
     private readonly CompanionSessionCoordinator sessionCoordinator;
@@ -27,6 +29,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     private readonly IPointCuePresenter pointCuePresenter;
     private readonly IProviderApiKeyStore apiKeyStore;
     private readonly IDictationTranscriber? dictationTranscriber;
+    private readonly ITextToSpeechClient? textToSpeechClient;
+    private readonly IAudioPlaybackService? audioPlaybackService;
     private readonly SemaphoreSlim cueGate = new(1, 1);
 
     private CancellationTokenSource? interactionCancellationSource;
@@ -39,12 +43,17 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     private string responseText = string.Empty;
     private string activeQuestionText = string.Empty;
     private IReadOnlyList<TutorConversationTurn> conversationTurns = [];
+    private IReadOnlyList<StoredConversation> storedConversations = [];
+    private StoredConversation? selectedStoredConversation;
     private string responseStatusText = BrandText.RespondingStatus;
     private TutorInteractionResult? lastInteractionResult;
     private bool isProviderOperationBusy;
     private bool hasStoredApiKey;
     private string apiKeyStatusText = BrandText.ApiKeyNotStored;
+    private bool hasStoredElevenLabsApiKey;
+    private string elevenLabsApiKeyStatusText = BrandText.ApiKeyNotStored;
     private VoiceInteraction? voiceInteraction;
+    private CancellationTokenSource? speechCancellationSource;
     private int disposeState;
 
     public CompanionViewModel(
@@ -53,7 +62,9 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         TutorInteractionService tutorInteractionService,
         IPointCuePresenter pointCuePresenter,
         IProviderApiKeyStore apiKeyStore,
-        IDictationTranscriber? dictationTranscriber = null)
+        IDictationTranscriber? dictationTranscriber = null,
+        ITextToSpeechClient? textToSpeechClient = null,
+        IAudioPlaybackService? audioPlaybackService = null)
     {
         ArgumentNullException.ThrowIfNull(sessionCoordinator);
         ArgumentNullException.ThrowIfNull(settings);
@@ -66,6 +77,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         this.pointCuePresenter = pointCuePresenter;
         this.apiKeyStore = apiKeyStore;
         this.dictationTranscriber = dictationTranscriber;
+        this.textToSpeechClient = textToSpeechClient;
+        this.audioPlaybackService = audioPlaybackService;
         Settings = settings;
 
         AdvanceSessionCommand = new RelayCommand(
@@ -85,6 +98,9 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             CanChangeProviderSettings);
         SelectOpenAIProviderCommand = new RelayCommand(
             () => _ = SelectProviderAndObserveAsync(AiProviderKind.OpenAI),
+            CanChangeProviderSettings);
+        SelectGeminiProviderCommand = new RelayCommand(
+            () => _ = SelectProviderAndObserveAsync(AiProviderKind.Gemini),
             CanChangeProviderSettings);
         RemoveApiKeyCommand = new RelayCommand(
             () => _ = DeleteSelectedProviderApiKeyAndObserveAsync(),
@@ -107,6 +123,9 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     public IReadOnlyList<PushToTalkKey> PushToTalkKeys { get; } =
         Enum.GetValues<PushToTalkKey>();
 
+    public IReadOnlyList<TextToSpeechProviderKind> TextToSpeechProviders { get; } =
+        Enum.GetValues<TextToSpeechProviderKind>();
+
     public IReadOnlyList<TutorConversationTurn> ConversationTurns
     {
         get => conversationTurns;
@@ -117,6 +136,32 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(HasConversation));
                 OnPropertyChanged(nameof(IsConversationEmpty));
                 ClearConversationCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public IReadOnlyList<StoredConversation> StoredConversations
+    {
+        get => storedConversations;
+        private set
+        {
+            if (SetProperty(ref storedConversations, value))
+            {
+                OnPropertyChanged(nameof(HasStoredConversations));
+            }
+        }
+    }
+
+    public bool HasStoredConversations => StoredConversations.Count > 0;
+
+    public StoredConversation? SelectedStoredConversation
+    {
+        get => selectedStoredConversation;
+        set
+        {
+            if (SetProperty(ref selectedStoredConversation, value))
+            {
+                _ = LoadSelectedStoredConversationAndObserveAsync(value);
             }
         }
     }
@@ -159,6 +204,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     {
         CompanionSessionState.Idle => BrandText.IdleDetail,
         CompanionSessionState.Listening => BrandText.ListeningDetail,
+        CompanionSessionState.Processing when !string.IsNullOrWhiteSpace(ResponseText) => ResponseText,
         CompanionSessionState.Processing => BrandText.ProcessingDetail,
         CompanionSessionState.Responding when !string.IsNullOrWhiteSpace(ResponseText) => ResponseText,
         CompanionSessionState.Responding => BrandText.RespondingDetail,
@@ -254,9 +300,21 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
     public bool IsOpenAIProvider => SelectedProvider == AiProviderKind.OpenAI;
 
+    public bool IsGeminiProvider => SelectedProvider == AiProviderKind.Gemini;
+
     public bool IsDirectProvider => !IsWorkerProvider;
 
     public bool CanSaveApiKey => CanChangeProviderSettings() && IsDirectProvider;
+
+    public bool CanSaveElevenLabsApiKey =>
+        CanChangeProviderSettings() &&
+        Settings.TextToSpeechProvider == TextToSpeechProviderKind.ElevenLabs;
+
+    public bool IsElevenLabsSpeechProvider =>
+        Settings.TextToSpeechProvider == TextToSpeechProviderKind.ElevenLabs;
+
+    public bool IsOpenAISpeechProvider =>
+        Settings.TextToSpeechProvider == TextToSpeechProviderKind.OpenAI;
 
     public bool IsProviderOperationBusy
     {
@@ -266,6 +324,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             if (SetProperty(ref isProviderOperationBusy, value))
             {
                 OnPropertyChanged(nameof(CanSaveApiKey));
+                OnPropertyChanged(nameof(CanSaveElevenLabsApiKey));
                 RaiseProviderCommandCanExecuteChanged();
             }
         }
@@ -294,6 +353,18 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         ? BrandText.ReplaceApiKeyLabel
         : BrandText.SaveApiKeyLabel;
 
+    public bool HasStoredElevenLabsApiKey
+    {
+        get => hasStoredElevenLabsApiKey;
+        private set => SetProperty(ref hasStoredElevenLabsApiKey, value);
+    }
+
+    public string ElevenLabsApiKeyStatusText
+    {
+        get => elevenLabsApiKeyStatusText;
+        private set => SetProperty(ref elevenLabsApiKeyStatusText, value);
+    }
+
     public RelayCommand AdvanceSessionCommand { get; }
 
     public RelayCommand SubmitQuestionCommand { get; }
@@ -305,6 +376,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     public RelayCommand SelectAnthropicProviderCommand { get; }
 
     public RelayCommand SelectOpenAIProviderCommand { get; }
+
+    public RelayCommand SelectGeminiProviderCommand { get; }
 
     public RelayCommand RemoveApiKeyCommand { get; }
 
@@ -336,6 +409,63 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         if (isVisible)
         {
             _ = RefreshSelectedProviderKeyStatusAndObserveAsync();
+            _ = RefreshElevenLabsApiKeyStatusAndObserveAsync();
+        }
+    }
+
+    public async Task SaveElevenLabsApiKeyAsync(string apiKey)
+    {
+        if (!CanSaveElevenLabsApiKey || IsProviderOperationBusy)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            ElevenLabsApiKeyStatusText = BrandText.ApiKeyRequired;
+            return;
+        }
+
+        IsProviderOperationBusy = true;
+        ElevenLabsApiKeyStatusText = BrandText.ApiKeySaving;
+        try
+        {
+            await apiKeyStore.SaveApiKeyAsync(AiProviderKind.ElevenLabs, apiKey);
+            HasStoredElevenLabsApiKey = true;
+            ElevenLabsApiKeyStatusText = BrandText.ApiKeyStored;
+        }
+        catch
+        {
+            ElevenLabsApiKeyStatusText = BrandText.ApiKeySaveFailed;
+        }
+        finally
+        {
+            IsProviderOperationBusy = false;
+        }
+    }
+
+    public async Task DeleteElevenLabsApiKeyAsync()
+    {
+        if (IsProviderOperationBusy)
+        {
+            return;
+        }
+
+        IsProviderOperationBusy = true;
+        ElevenLabsApiKeyStatusText = BrandText.ApiKeyRemoving;
+        try
+        {
+            await apiKeyStore.DeleteApiKeyAsync(AiProviderKind.ElevenLabs);
+            HasStoredElevenLabsApiKey = false;
+            ElevenLabsApiKeyStatusText = BrandText.ApiKeyNotStored;
+        }
+        catch
+        {
+            ElevenLabsApiKeyStatusText = BrandText.ApiKeyRemoveFailed;
+        }
+        finally
+        {
+            IsProviderOperationBusy = false;
         }
     }
 
@@ -347,6 +477,10 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         }
 
         IsConversationVisible = isVisible;
+        if (isVisible)
+        {
+            _ = RefreshStoredConversationsAndObserveAsync();
+        }
     }
 
     public void ClearConversation()
@@ -357,6 +491,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         }
 
         tutorInteractionService.ClearHistory();
+        SelectedStoredConversation = null;
         RefreshConversationTurns();
         ClearActiveQuestion();
         ResponseText = string.Empty;
@@ -370,7 +505,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
     public async Task SelectProviderAsync(AiProviderKind provider)
     {
-        if (!Enum.IsDefined(provider))
+        if (!Enum.IsDefined(provider) || provider == AiProviderKind.ElevenLabs)
         {
             throw new ArgumentOutOfRangeException(nameof(provider));
         }
@@ -477,6 +612,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             return;
         }
 
+        CancelSpeechOutput();
         CancelInteractionToken();
         ClearActiveQuestion();
         Question = string.Empty;
@@ -561,6 +697,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             return Task.CompletedTask;
         }
 
+        CancelSpeechOutput();
         CancelInteractionToken();
         ClearActiveQuestion();
         Question = string.Empty;
@@ -602,6 +739,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
     public async Task CancelCurrentInteractionAsync()
     {
+        CancelSpeechOutput();
         var activeVoiceInteraction = voiceInteraction;
         voiceInteraction = null;
         var cancellationSource = interactionCancellationSource;
@@ -648,6 +786,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         Settings.PropertyChanged -= HandleSettingsPropertyChanged;
         SystemParameters.StaticPropertyChanged -= HandleSystemParametersPropertyChanged;
         voiceInteraction?.ReleaseSignal.TrySetCanceled();
+        CancelSpeechOutput();
         voiceInteraction = null;
         var cancellationSource = interactionCancellationSource;
         interactionCancellationSource = null;
@@ -734,9 +873,21 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     {
         try
         {
+            var streamedResponseText = new System.Text.StringBuilder();
+            var responseProgress = new Progress<string>(textDelta =>
+            {
+                if (!IsCurrent(interactionId) || cancellationSource.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                streamedResponseText.Append(textDelta);
+                ResponseText = streamedResponseText.ToString().Trim();
+            });
             var result = await tutorInteractionService.RespondAsync(
                 preparation,
                 prompt,
+                responseProgress,
                 cancellationSource.Token);
             if (!IsCurrent(interactionId) || cancellationSource.IsCancellationRequested)
             {
@@ -744,9 +895,13 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             }
 
             LastInteractionResult = result;
+            selectedStoredConversation = null;
+            OnPropertyChanged(nameof(SelectedStoredConversation));
             RefreshConversationTurns();
+            _ = RefreshStoredConversationsAndObserveAsync();
             await PresentResultCueIfCurrentAsync(interactionId, result);
             ShowResponse(interactionId, BrandText.RespondingStatus, result.SpokenText);
+            StartSpeechOutput(result.SpokenText);
         }
         catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
         {
@@ -769,6 +924,12 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             var (status, detail) = DescribeOpenAIFailure(exception);
             ShowResponse(interactionId, status, detail);
         }
+        catch (GeminiProviderException exception)
+        {
+            await HideCueIfCurrentAsync(interactionId);
+            var (status, detail) = DescribeGeminiFailure(exception);
+            ShowResponse(interactionId, status, detail);
+        }
         catch (Exception)
         {
             await HideCueIfCurrentAsync(interactionId);
@@ -781,6 +942,67 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         {
             ClearActiveQuestionIfCurrent(interactionId);
         }
+    }
+
+    private void StartSpeechOutput(string responseText)
+    {
+        CancelSpeechOutput();
+        if (!Settings.SpeechOutputEnabled ||
+            textToSpeechClient is null ||
+            audioPlaybackService is null ||
+            string.IsNullOrWhiteSpace(responseText))
+        {
+            return;
+        }
+
+        speechCancellationSource = new CancellationTokenSource();
+        _ = SynthesizeAndPlaySpeechAsync(
+            responseText,
+            speechCancellationSource,
+            textToSpeechClient,
+            audioPlaybackService);
+    }
+
+    private async Task SynthesizeAndPlaySpeechAsync(
+        string responseText,
+        CancellationTokenSource cancellationSource,
+        ITextToSpeechClient speechClient,
+        IAudioPlaybackService playbackService)
+    {
+        try
+        {
+            var speechAudio = await speechClient
+                .SynthesizeAsync(responseText, cancellationSource.Token);
+            await playbackService.PlayAsync(speechAudio, cancellationSource.Token);
+        }
+        catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
+        {
+            // A new question or explicit cancel stops speech without changing the text answer.
+        }
+        catch (Exception exception) when (
+            exception is SpeechSynthesisException or AudioPlaybackException)
+        {
+            System.Diagnostics.Trace.TraceWarning(
+                "Clicky speech output was skipped: {0}",
+                exception.Message);
+        }
+        finally
+        {
+            if (ReferenceEquals(speechCancellationSource, cancellationSource))
+            {
+                speechCancellationSource = null;
+            }
+
+            cancellationSource.Dispose();
+        }
+    }
+
+    private void CancelSpeechOutput()
+    {
+        var cancellationSource = speechCancellationSource;
+        speechCancellationSource = null;
+        cancellationSource?.Cancel();
+        audioPlaybackService?.Stop();
     }
 
     private void EnsureVoiceProcessing(CompanionInteractionId interactionId)
@@ -835,6 +1057,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsWorkerProvider));
         OnPropertyChanged(nameof(IsAnthropicProvider));
         OnPropertyChanged(nameof(IsOpenAIProvider));
+        OnPropertyChanged(nameof(IsGeminiProvider));
         OnPropertyChanged(nameof(IsDirectProvider));
         OnPropertyChanged(nameof(CanSaveApiKey));
         RaiseProviderCommandCanExecuteChanged();
@@ -845,6 +1068,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         SelectWorkerProviderCommand.RaiseCanExecuteChanged();
         SelectAnthropicProviderCommand.RaiseCanExecuteChanged();
         SelectOpenAIProviderCommand.RaiseCanExecuteChanged();
+        SelectGeminiProviderCommand.RaiseCanExecuteChanged();
         RemoveApiKeyCommand.RaiseCanExecuteChanged();
     }
 
@@ -895,6 +1119,23 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         ActiveQuestionText = text.Trim();
     }
 
+    private async Task RefreshElevenLabsApiKeyStatusAndObserveAsync()
+    {
+        try
+        {
+            HasStoredElevenLabsApiKey = await apiKeyStore
+                .HasApiKeyAsync(AiProviderKind.ElevenLabs);
+            ElevenLabsApiKeyStatusText = HasStoredElevenLabsApiKey
+                ? BrandText.ApiKeyStored
+                : BrandText.ApiKeyNotStored;
+        }
+        catch
+        {
+            HasStoredElevenLabsApiKey = false;
+            ElevenLabsApiKeyStatusText = BrandText.ApiKeyStatusFailed;
+        }
+    }
+
     private void ClearActiveQuestionIfCurrent(CompanionInteractionId interactionId)
     {
         if (activeQuestionInteractionId == interactionId)
@@ -911,6 +1152,48 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
     private void RefreshConversationTurns() =>
         ConversationTurns = tutorInteractionService.GetConversationHistorySnapshot();
+
+    private async Task RefreshStoredConversationsAndObserveAsync()
+    {
+        try
+        {
+            StoredConversations = await tutorInteractionService
+                .ListStoredConversationsAsync();
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Trace.TraceWarning(
+                "Clicky conversation history could not be loaded: {0}",
+                exception.Message);
+            StoredConversations = [];
+        }
+    }
+
+    private async Task LoadSelectedStoredConversationAndObserveAsync(
+        StoredConversation? storedConversation)
+    {
+        if (storedConversation is null)
+        {
+            RefreshConversationTurns();
+            return;
+        }
+
+        try
+        {
+            var loadedTurns = await tutorInteractionService
+                .LoadStoredConversationAsync(storedConversation.Id);
+            if (SelectedStoredConversation?.Id == storedConversation.Id)
+            {
+                ConversationTurns = loadedTurns;
+            }
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Trace.TraceWarning(
+                "Clicky conversation could not be opened: {0}",
+                exception.Message);
+        }
+    }
 
     private static (string Status, string Detail) DescribeAnthropicFailure(
         AnthropicProviderException exception)
@@ -960,6 +1243,26 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
                 ("Couldn't answer", "OpenAI declined that request. Try asking in a different way."),
             _ =>
                 (BrandText.ProviderBusyStatus, "OpenAI could not complete that request. Check the model and try again."),
+        };
+
+    private static (string Status, string Detail) DescribeGeminiFailure(
+        GeminiProviderException exception) => exception.FailureKind switch
+        {
+            GeminiProviderFailureKind.MissingApiKey or
+            GeminiProviderFailureKind.InvalidConfiguration =>
+                (BrandText.ProviderSetupStatus, "Save a Gemini key and model in Clicky settings."),
+            GeminiProviderFailureKind.Authentication =>
+                (BrandText.ProviderSetupStatus, "Gemini rejected the stored key. Replace it in settings."),
+            GeminiProviderFailureKind.Permission =>
+                (BrandText.ProviderBusyStatus, "This Gemini key cannot use the selected model."),
+            GeminiProviderFailureKind.RateLimited =>
+                (BrandText.ProviderBusyStatus, "Gemini is rate limiting this key. Give it a moment and try again."),
+            GeminiProviderFailureKind.Safety =>
+                ("Couldn't answer", "Gemini declined that request. Try asking in a different way."),
+            GeminiProviderFailureKind.Server or GeminiProviderFailureKind.Transport =>
+                (BrandText.ProviderBusyStatus, "Gemini is having trouble right now. Try again shortly."),
+            _ =>
+                (BrandText.ProviderBusyStatus, "Gemini could not complete that request. Check the model and try again."),
         };
 
     private async Task ShowFailureAsync(CompanionInteractionId interactionId, string message)
@@ -1107,6 +1410,13 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         if (eventArgs.PropertyName == nameof(CompanionSettings.MotionEffectsEnabled))
         {
             OnPropertyChanged(nameof(IsMotionEffectivelyEnabled));
+        }
+
+        if (eventArgs.PropertyName == nameof(CompanionSettings.TextToSpeechProvider))
+        {
+            OnPropertyChanged(nameof(IsOpenAISpeechProvider));
+            OnPropertyChanged(nameof(IsElevenLabsSpeechProvider));
+            OnPropertyChanged(nameof(CanSaveElevenLabsApiKey));
         }
     }
 

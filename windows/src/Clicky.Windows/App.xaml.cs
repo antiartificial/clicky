@@ -7,11 +7,13 @@ using Clicky.Windows.Interaction;
 using Clicky.Windows.Motion;
 using Clicky.Windows.Networking;
 using Clicky.Windows.Overlay;
+using Clicky.Windows.Persistence;
 using Clicky.Windows.Providers;
 using Clicky.Windows.Session;
 using Clicky.Windows.Shell;
 using Clicky.Windows.ViewModels;
 using Clicky.Windows.Voice;
+using Clicky.Windows.Speech;
 
 namespace Clicky.Windows;
 
@@ -25,8 +27,14 @@ public partial class App : System.Windows.Application
     private HttpClient? workerHttpClient;
     private AnthropicDirectApiClient? anthropicClient;
     private OpenAiResponsesClient? openAIClient;
+    private GeminiDirectApiClient? geminiClient;
+    private OpenAiSpeechClient? openAISpeechClient;
+    private ElevenLabsSpeechClient? elevenLabsSpeechClient;
+    private WaveAudioPlaybackService? audioPlaybackService;
+    private SqliteConversationRepository? conversationRepository;
     private IPointCuePresenter? pointCuePresenter;
     private CompanionSettings? settings;
+    private CompanionSettingsStore? settingsStore;
     private CompanionViewModel? companionViewModel;
     private IGlobalPushToTalkMonitor? pushToTalkMonitor;
     private IDictationTranscriber? dictationTranscriber;
@@ -57,7 +65,9 @@ public partial class App : System.Windows.Application
 
     private void InitializeApplication()
     {
-        settings = new CompanionSettings();
+        settingsStore = new CompanionSettingsStore();
+        settings = settingsStore.Load();
+        settings.PropertyChanged += HandleSettingsPropertyChanged;
         var sessionCoordinator = new CompanionSessionCoordinator();
         var apiKeyStore = new WindowsCredentialApiKeyStore();
         workerHttpClient = new HttpClient(
@@ -66,14 +76,31 @@ public partial class App : System.Windows.Application
         var workerClient = new SettingsAwareWorkerClient(workerHttpClient, settings);
         anthropicClient = AnthropicDirectApiClient.CreateProduction(apiKeyStore, settings);
         openAIClient = OpenAiResponsesClient.CreateProduction(apiKeyStore, settings);
+        geminiClient = GeminiDirectApiClient.CreateProduction(apiKeyStore, settings);
         var providerClient = new ProviderRoutingChatClient(
             settings,
             workerClient,
             anthropicClient,
-            openAIClient);
+            openAIClient,
+            geminiClient);
+        conversationRepository = new SqliteConversationRepository();
         var tutorInteractionService = new TutorInteractionService(
             new ActiveWindowCaptureService(settings),
-            providerClient);
+            providerClient,
+            new TutorInteractionOptions
+            {
+                ProviderContextAccessor = () => new ConversationProviderContext(
+                    settings.SelectedProvider.ToString(),
+                    GetSelectedModelId(settings)),
+            },
+            conversationRepository);
+        openAISpeechClient = OpenAiSpeechClient.CreateProduction(apiKeyStore, settings);
+        elevenLabsSpeechClient = ElevenLabsSpeechClient.CreateProduction(apiKeyStore, settings);
+        var textToSpeechClient = new ProviderRoutingTextToSpeechClient(
+            settings,
+            openAISpeechClient,
+            elevenLabsSpeechClient);
+        audioPlaybackService = new WaveAudioPlaybackService();
         pointCuePresenter = new PointCuePresenter(
             new PointCuePresenterOptions
             {
@@ -86,7 +113,9 @@ public partial class App : System.Windows.Application
             tutorInteractionService,
             pointCuePresenter,
             apiKeyStore,
-            dictationTranscriber);
+            dictationTranscriber,
+            textToSpeechClient,
+            audioPlaybackService);
 
         companionWindow = new CompanionWindow(companionViewModel);
         trayIconHost = new TrayIconHost(
@@ -95,6 +124,15 @@ public partial class App : System.Windows.Application
             exitApplication: ExitApplication);
         TryInitializePushToTalkMonitor();
     }
+
+    private static string GetSelectedModelId(CompanionSettings settings) =>
+        settings.SelectedProvider switch
+        {
+            AiProviderKind.Anthropic => settings.AnthropicModelId,
+            AiProviderKind.OpenAI => settings.OpenAIModelId,
+            AiProviderKind.Gemini => settings.GeminiModelId,
+            _ => TutorInteractionOptions.DefaultModel,
+        };
 
     private void TryInitializePushToTalkMonitor()
     {
@@ -107,7 +145,6 @@ public partial class App : System.Windows.Application
         {
             pushToTalkMonitor = new GlobalPushToTalkMonitor(settings.PushToTalkKey);
             pushToTalkMonitor.Transitioned += HandlePushToTalkTransition;
-            settings.PropertyChanged += HandleSettingsPropertyChanged;
         }
         catch (Exception exception)
         {
@@ -141,6 +178,8 @@ public partial class App : System.Windows.Application
 
     private void HandleSettingsPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
     {
+        _ = SaveSettingsAndObserveAsync();
+
         if (eventArgs.PropertyName != nameof(CompanionSettings.PushToTalkKey) ||
             settings is null || pushToTalkMonitor is null)
         {
@@ -148,6 +187,25 @@ public partial class App : System.Windows.Application
         }
 
         pushToTalkMonitor.SelectedKey = settings.PushToTalkKey;
+    }
+
+    private async Task SaveSettingsAndObserveAsync()
+    {
+        if (settingsStore is null || settings is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await settingsStore.SaveAsync(settings);
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Trace.TraceWarning(
+                "Clicky settings could not be saved: {0}",
+                exception.Message);
+        }
     }
 
     private static async Task ObservePushToTalkOperationAsync(Task operation)
@@ -238,6 +296,16 @@ public partial class App : System.Windows.Application
         if (settings is not null)
         {
             settings.PropertyChanged -= HandleSettingsPropertyChanged;
+            try
+            {
+                settingsStore?.SaveAsync(settings).GetAwaiter().GetResult();
+            }
+            catch (Exception exception)
+            {
+                System.Diagnostics.Trace.TraceWarning(
+                    "Clicky settings could not be saved during shutdown: {0}",
+                    exception.Message);
+            }
         }
 
         if (pushToTalkMonitor is not null)
@@ -265,6 +333,16 @@ public partial class App : System.Windows.Application
             anthropicClient = null;
             openAIClient?.Dispose();
             openAIClient = null;
+            geminiClient?.Dispose();
+            geminiClient = null;
+            openAISpeechClient?.Dispose();
+            openAISpeechClient = null;
+            elevenLabsSpeechClient?.Dispose();
+            elevenLabsSpeechClient = null;
+            audioPlaybackService?.Dispose();
+            audioPlaybackService = null;
+            conversationRepository?.Dispose();
+            conversationRepository = null;
             workerHttpClient?.Dispose();
             workerHttpClient = null;
         }

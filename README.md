@@ -133,9 +133,9 @@ If you want the full technical breakdown, read `CLAUDE.md`. But here's the short
 
 The `windows/` subtree contains a separate .NET 10 WPF prototype of Clicky for Windows. It captures the active application before taking focus, accepts a typed question, and uses the screenshot and active-window title to guide one visible action at a time. Adobe apps, Visual Studio, and Rive are representative uses, not product-specific integrations.
 
-The Windows app supports the existing Cloudflare Worker `/chat` route plus direct Anthropic and OpenAI modes. Direct-provider keys are stored in Windows Credential Manager. It also includes adaptive screenshot optimization, a tray shell, Clicky artwork, an animated non-activating startup splash, terminal `POINT` parsing, and a click-through cue overlay.
+The Windows app is local-first BYOK with direct OpenAI, Anthropic, and Gemini chat, plus optional OpenAI or ElevenLabs speech output. Provider keys are stored in Windows Credential Manager; non-secret preferences and SQLite conversation history remain under the current user's local app data. It also includes adaptive screenshot optimization, streamed answer presentation, a tray shell, Clicky artwork, an animated non-activating startup splash, terminal `POINT` parsing, and a click-through cue overlay. The legacy Worker route remains for compatibility.
 
-It does not yet include microphone capture, transcription, TTS or startup audio, persistent non-secret settings, multi-display capture, or an installer. No live API end-to-end verification is claimed. See [`windows/README.md`](windows/README.md) for setup and commands, and [`windows/ARCHITECTURE.md`](windows/ARCHITECTURE.md) for the implementation design.
+It includes local Windows push-to-talk transcription and opt-in TTS, but not cloud transcription, Realtime/Live conversation mode, startup audio, multi-display capture, or an installer. No live API end-to-end verification is claimed. See [`windows/README.md`](windows/README.md) for setup and commands, and [`windows/ARCHITECTURE.md`](windows/ARCHITECTURE.md) for the implementation design.
 
 ```powershell
 dotnet build .\windows\Clicky.Windows.sln

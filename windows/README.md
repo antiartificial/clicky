@@ -1,6 +1,6 @@
 # Clicky for Windows
 
-`windows/` contains the Clicky Windows prototype: a .NET 10 WPF visual guide for typed or foot-pedal voice questions about any active desktop application. It can help with the interface currently visible in an Adobe app, Visual Studio, Rive, a browser, or another desktop tool; these are examples, not built-in integrations. Clicky can use the repository's existing Cloudflare Worker or connect directly to Anthropic or OpenAI with a key stored in Windows Credential Manager. Windows voice input uses local `System.Speech` dictation rather than the macOS transcription pipeline.
+`windows/` contains the Clicky Windows prototype: a .NET 10 WPF visual guide for typed or foot-pedal voice questions about any active desktop application. It can help with the interface currently visible in an Adobe app, Visual Studio, Rive, a browser, or another desktop tool; these are examples, not built-in integrations. The Windows experience is local-first and BYOK: it connects directly to OpenAI, Anthropic, or Gemini with keys stored in Windows Credential Manager. Windows voice input uses local `System.Speech` dictation rather than the macOS transcription pipeline.
 
 For the component-level design, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -11,16 +11,18 @@ For the component-level design, see [ARCHITECTURE.md](ARCHITECTURE.md).
 - A global, configurable F13-F24 foot-pedal shortcut, default F13. Pressing the pedal starts local Windows dictation and prepares the active-window capture; releasing it finalizes the transcript and processes the question through the provider selected in Settings.
 - Active-window JPEG capture using Windows/DWM bounds and GDI `CopyFromScreen`.
 - A default-on **Optimize large captures** setting. Images at or below 1920x1080 remain full size; if either dimension is larger, both encoded dimensions are reduced to exactly half scale (with odd dimensions rounded up), encoded at JPEG quality 88, and mapped against the unchanged physical window bounds. Capture work runs off the UI thread and rejects source windows above a 40-million-pixel safety ceiling before bitmap allocation.
-- Three AI modes selected in Settings: Cloudflare Worker, direct Anthropic, and direct OpenAI.
-- Streaming, screenshot-aware requests through the Worker's Anthropic-compatible `/chat` contract, Anthropic's Messages API, or OpenAI's Responses API.
-- Provider-specific model IDs, with `claude-sonnet-4-6` as the Anthropic default and `gpt-5.4-mini` as the OpenAI default.
+- Three direct AI modes selected in Settings: OpenAI, Anthropic, and Gemini. The legacy Cloudflare Worker transport remains available in the networking layer for compatibility, but it is no longer the default Windows experience.
+- Streaming, screenshot-aware requests through Anthropic's Messages API, OpenAI's Responses API, or Gemini's `streamGenerateContent` SSE API. Visible answer deltas gently fade in while the terminal pointer directive remains hidden.
+- Provider-specific model IDs, with `gpt-5.4-mini` as the OpenAI default, `claude-sonnet-4-6` as the Anthropic default, and `gemini-3.5-flash` as the Gemini default.
 - Direct-provider key storage in Windows Credential Manager, with masked entry plus save, replace, status, and remove controls.
 - A generic `VisualGuideTutor` prompt that treats the active-window title and screenshot as authoritative, teaches one visible action at a time, defines unfamiliar interface terms, avoids inventing controls, asks for clarification when uncertain, and requires one terminal `[POINT:...]` directive.
 - Terminal `POINT` parsing, capture-pixel to physical-desktop coordinate mapping, and a labeled, click-through, non-activating topmost cue overlay. Cue motion is on by default and runs only when both Clicky's motion toggle and the Windows reduced-motion preference allow it. The real mouse pointer is never moved.
-- In-memory conversation history capped at 10 turns. Changing provider cancels prepared work and clears that history.
-- An expandable conversation pane surfaces those same 10 successful turns as a typed-and-voice transcript. The active typed question or finalized dictation appears while a request is running, final replies omit the terminal `POINT` directive, and Clear conversation resets both the visible transcript and the provider context.
+- Active provider context remains capped at 10 turns. Successful turns are also written to `%LocalAppData%\Clicky\clicky.db`; screenshots and secrets are never stored there.
+- The conversation pane lists past conversations newest-first with a generated title and rolling answer summary, and opens their complete typed-and-voice transcripts. Starting a new conversation resets only active context and preserves prior sessions.
+- Optional OpenAI text-to-speech reads completed answers using the stored OpenAI key. ElevenLabs is available as an optional direct BYOK custom-voice provider with its own Credential Manager entry and voice ID. Playback is serialized, cancellable, and never required for the text answer to succeed.
+- Non-secret settings persist atomically in `%LocalAppData%\Clicky\settings.json`.
 - Embedded `Clicky.png` and `Clicky.ico` assets used by the companion, startup splash, tray icon, and executable.
-- A reduced-motion-aware, non-activating startup splash with a nominal 1.35-second logo/focus-ring animation. Startup is currently silent.
+- A reduced-motion-aware, non-activating startup splash with a nominal 1.13-second logo/focus-ring animation. Startup remains silent.
 - Unit tests for provider routing, key management, request serialization, SSE parsing, settings, state transitions, pedal transitions, capture contracts, tutor interactions, `POINT` mapping, cue motion, window placement, view-model behavior, and overlay presentation.
 
 ## Interaction flow
@@ -29,12 +31,12 @@ For the component-level design, see [ARCHITECTURE.md](ARCHITECTURE.md).
 2. Clicky enters its listening/preparation state and captures that foreground window before taking focus.
 3. After capture succeeds, Clicky activates and focuses the typed-question field.
 4. Press Enter or click Send. Clicky sends the active-window title, typed question, prepared JPEG, generic visual-guide prompt, and recent conversation turns through the provider selected in Settings.
-5. The streamed response is assembled, its terminal `[POINT:x,y:label]` or `[POINT:none]` directive is removed from the displayed reply, and any point is mapped back into the captured window's desktop bounds.
-6. A non-activating overlay marks the target without accepting input or taking focus from the application being guided.
+5. Visible answer deltas appear immediately with a subtle reduced-motion-aware fade while Clicky privately holds back the terminal `[POINT:x,y:label]` or `[POINT:none]` directive.
+6. The completed turn is written to local SQLite, optional speech playback begins, and a non-activating overlay marks any returned target without accepting input.
 
 Escape cancels the current interaction. Closing the companion hides it; the tray menu can show it, open Settings, or quit Clicky.
 
-For voice input, configure the **Foot pedal key** in Settings (`F13` by default). Pressing it globally starts listening with local Windows `System.Speech` dictation while Clicky prepares the active-window capture. Releasing it finalizes the transcript and processes it through the selected Worker, Anthropic, or OpenAI chat provider. Windows must have a recognition language installed and a usable default microphone configured.
+For voice input, configure the **Foot pedal key** in Settings (`F13` by default). Pressing it globally starts listening with local Windows `System.Speech` dictation while Clicky prepares the active-window capture. Releasing it finalizes the transcript and processes it through the selected OpenAI, Anthropic, or Gemini provider. Windows must have a recognition language installed and a usable default microphone configured.
 
 ## Choose an AI provider
 
@@ -42,21 +44,21 @@ Open Settings with the gear button or the tray menu, then select one mode:
 
 | Mode | Setup | Request destination |
 |---|---|---|
-| Worker | Enter a compatible Worker base URL. No local provider key is used. | `<Worker URL>/chat` |
 | Anthropic | Keep or edit the model ID, then store an Anthropic API key. | Fixed `https://api.anthropic.com/v1/messages` |
 | OpenAI | Keep or edit the model ID, then store an OpenAI API key. | Fixed `https://api.openai.com/v1/responses` |
+| Gemini | Keep or edit the model ID, then store a Gemini API key. | Fixed `https://generativelanguage.googleapis.com/v1beta/models/...:streamGenerateContent` |
 
-Worker is selected when the app starts. All non-secret settings, including provider selection, Worker URL, model IDs, motion, and pedal key, are held in memory and return to their defaults after restart. Saved Anthropic and OpenAI keys remain in Windows Credential Manager until removed.
+OpenAI is selected on a fresh install. Non-secret settings persist in `%LocalAppData%\Clicky\settings.json`; saved provider keys remain in Windows Credential Manager until removed.
 
 Changing provider deliberately cancels any captured-but-not-submitted question and clears the in-memory conversation history. A request also snapshots its provider before streaming starts, so it cannot jump providers midway through a response.
 
 ## Safe API key setup
 
-For direct Anthropic or OpenAI access:
+For direct OpenAI, Anthropic, or Gemini access:
 
 1. Obtain the key from your own provider account.
-2. Open Clicky Settings and select `Anthropic` or `OpenAI`.
-3. Confirm the Model ID. The defaults are `claude-sonnet-4-6` and `gpt-5.4-mini`, respectively.
+2. Open Clicky Settings and select `OpenAI`, `Anthropic`, or `Gemini`.
+3. Confirm the Model ID. The defaults are `gpt-5.4-mini`, `claude-sonnet-4-6`, and `gemini-3.5-flash`.
 4. Paste the key into the masked `API key` field and click `Save key`.
 5. Confirm that the status reads `Stored on this PC`. The entry field is cleared after the save attempt.
 
@@ -66,12 +68,12 @@ Never paste an API key into a Clicky question, chat message, issue, source file,
 
 Keys are stored as provider-specific generic credentials for the current Windows user on the local machine. This protects them at rest better than a settings file, but it is not isolation from a compromised Windows session: another process running as the same user may be able to read the credentials. Keep the Windows account and installed software trusted, and remove keys from Settings when they are no longer needed.
 
-The Credential Manager targets are `Clicky/ProviderApiKey/v1/anthropic` and `Clicky/ProviderApiKey/v1/openai`.
+The Credential Manager targets are `Clicky/ProviderApiKey/v1/anthropic`, `.../openai`, `.../gemini`, and `.../elevenlabs`.
 Keys saved by the earlier Windows prototype under `Knobnote/ProviderApiKey/v1/...` are migrated to the Clicky targets on first use and removed from the legacy target only after a successful write.
 
-## Worker setup
+## Legacy Worker compatibility
 
-The default Worker URL is intentionally a placeholder. Deploy or run the existing Worker described in the root [README.md](../README.md), then select `Worker` in Clicky Settings and enter its base URL, for example:
+The Worker transport remains in the codebase for compatibility with the original macOS architecture and local fixtures, but it is not shown in the Windows provider selector. New Windows use should prefer direct BYOK providers. A developer exercising the legacy path must configure `CompanionSettings.WorkerBaseUrl`, for example:
 
 ```text
 https://your-worker-name.your-subdomain.workers.dev
@@ -87,10 +89,11 @@ Direct endpoints are constants in the application and are not editable in Settin
 
 - Anthropic mode sends the system prompt, conversation turns, typed question, and base64 JPEG to the Messages API. It streams text deltas through Anthropic SSE, requires a terminal `message_stop` event, and rejects `max_tokens` truncation as incomplete.
 - OpenAI mode sends the same tutoring context and JPEG as an `input_image` data URL to the Responses API. It sets `stream: true` and `store: false`, consumes `response.output_text.delta`, and requires `response.completed`.
+- Gemini mode sends alternating user/model turns and the JPEG as `inline_data`, consumes SSE candidate text, and requires a terminal `STOP` finish reason. Safety and incomplete responses become typed, bounded failures.
 
 Provider errors shown in the UI are bounded and sanitized. API keys and arbitrary error bodies are not included in user-facing exception messages.
 
-The production Worker client also disables redirects. Combined with the HTTPS-only remote URL rule, this keeps screenshots, questions, and history on the configured Worker origin.
+The legacy production Worker client also disables redirects. It remains covered for compatibility but is not exposed by the current Windows provider selector.
 
 ## Privacy and capture scope
 
@@ -108,7 +111,7 @@ Optimization is applied only when the captured width exceeds 1920 pixels or its 
 | Include pointer in captures | Off | The current GDI capture does not add a pointer image. |
 | Retain captures locally | Off | Captures remain in memory and are not written to disk by the app. |
 
-The five capture fields are reserved internal model defaults, not visible controls or a selectable policy surface. Images, typed questions or finalized voice transcripts, and recent conversation turns are sent only when a question is processed, through the provider currently selected in Settings. Speech recognition itself is local.
+The five capture fields are reserved internal model defaults, not visible controls or a selectable policy surface. Images, typed questions or finalized voice transcripts, and recent conversation turns are sent only when a question is processed, through the provider currently selected in Settings. Speech recognition itself is local. SQLite stores transcript text and metadata only; API keys remain in Credential Manager and screenshots remain memory-only.
 
 ## Build, test, and run
 
@@ -143,22 +146,22 @@ This checkout also supports a repository-local SDK at `.dotnet`:
 .\.dotnet\dotnet.exe run --project .\windows\src\Clicky.Windows\Clicky.Windows.csproj
 ```
 
-The automated suite uses fake key stores and local HTTP/SSE fixtures. It does not read real Windows credentials or call a live Cloudflare Worker, Anthropic API, or OpenAI API by default. Live-provider behavior therefore requires a separate, deliberate manual verification with the user's own account and billing controls.
+The automated suite uses fake key stores and local HTTP/SSE fixtures. It does not read real Windows credentials or call a live Cloudflare Worker, Anthropic, OpenAI, Gemini, or ElevenLabs API by default. Live-provider behavior therefore requires a separate, deliberate manual verification with the user's own account and billing controls.
 
 ## Current limitations
 
-- Responses are text-only. TTS, audio playback, and startup audio are not implemented.
+- OpenAI and ElevenLabs speech output is implemented, but live account/model/voice access is not exercised by the automated suite. Startup audio is not implemented.
 - Voice input requires an installed Windows Speech Recognition language and a usable default microphone.
 - There is no packaged installer or signed release artifact.
 - Capture is limited to the active foreground window through GDI screen copying. There is no full-display, multi-display, Windows Graphics Capture, or occlusion-independent capture path yet.
-- Provider selection, Worker URL, model IDs, motion preference, pedal key, and conversation history are in memory and reset on restart. Direct-provider keys are the exception and persist in Windows Credential Manager.
+- There is no conversation search, AI-generated multi-turn synopsis, export, retention window, or encrypted SQLite option yet. The current rolling summary is a bounded preview of the latest successful answer.
 - Capture scope is fixed to the active window. Except for large-capture optimization, the reserved capture fields are not user-configurable, and visible Clicky overlap is not explicitly removed from GDI captures.
 - Automated tests do not make billable live-provider requests or validate account-specific model access.
 
 ## Next milestones
 
-1. Add TTS playback and cancellation.
-2. Replace or supplement GDI with an explicit Windows Graphics Capture pipeline, then wire the display, pointer, exclusion, and retention settings to real capture policies.
-3. Persist non-secret provider preferences and add clear-data controls for any future retained content.
-4. Add an explicitly opted-in live integration harness that never logs or commits credentials.
-5. Produce a signed, versioned installer with upgrade and uninstall behavior.
+1. Add conversation search, deletion/export controls, retention settings, and provider-generated rolling summaries.
+2. Add OpenAI cloud transcription as an optional pedal input adapter while retaining local Windows speech.
+3. Add an optional OpenAI Realtime conversation mode, followed by Gemini Live, without replacing deterministic push-to-talk.
+4. Replace or supplement GDI with an explicit Windows Graphics Capture pipeline.
+5. Add an explicitly opted-in live integration harness, then produce a signed installer.

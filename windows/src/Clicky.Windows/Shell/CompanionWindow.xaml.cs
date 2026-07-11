@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Clicky.Windows.Providers;
 using Clicky.Windows.ViewModels;
@@ -155,6 +156,9 @@ public partial class CompanionWindow : Window
     private async void OpenAIProviderButton_Click(object sender, RoutedEventArgs routedEventArgs) =>
         await SelectProviderAsync(AiProviderKind.OpenAI);
 
+    private async void GeminiProviderButton_Click(object sender, RoutedEventArgs routedEventArgs) =>
+        await SelectProviderAsync(AiProviderKind.Gemini);
+
     private async Task SelectProviderAsync(AiProviderKind provider)
     {
         ProviderApiKeyPasswordBox.Clear();
@@ -231,10 +235,38 @@ public partial class CompanionWindow : Window
         ApplyNonActivatingStyle(shouldPreventActivation: true);
     }
 
+    private async void SaveElevenLabsApiKeyButton_Click(
+        object sender,
+        RoutedEventArgs routedEventArgs)
+    {
+        var securePassword = ElevenLabsApiKeyPasswordBox.SecurePassword;
+        try
+        {
+            var apiKey = new NetworkCredential(string.Empty, securePassword).Password;
+            await viewModel.SaveElevenLabsApiKeyAsync(apiKey);
+        }
+        finally
+        {
+            ElevenLabsApiKeyPasswordBox.Clear();
+            securePassword.Dispose();
+        }
+    }
+
+    private async void RemoveElevenLabsApiKeyButton_Click(
+        object sender,
+        RoutedEventArgs routedEventArgs) =>
+        await viewModel.DeleteElevenLabsApiKeyAsync();
+
     private void HandleViewModelPropertyChanged(
         object? sender,
         PropertyChangedEventArgs propertyChangedEventArgs)
     {
+        if (propertyChangedEventArgs.PropertyName == nameof(CompanionViewModel.ResponseText) &&
+            !string.IsNullOrWhiteSpace(viewModel.ResponseText))
+        {
+            AnimateResponseTextDelta();
+        }
+
         if (!viewModel.IsConversationVisible ||
             propertyChangedEventArgs.PropertyName is not (
                 nameof(CompanionViewModel.ConversationTurns) or
@@ -246,6 +278,25 @@ public partial class CompanionWindow : Window
         _ = Dispatcher.BeginInvoke(
             DispatcherPriority.Loaded,
             ConversationScrollViewer.ScrollToEnd);
+    }
+
+    private void AnimateResponseTextDelta()
+    {
+        if (!viewModel.IsMotionEffectivelyEnabled)
+        {
+            return;
+        }
+
+        var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var duration = new Duration(TimeSpan.FromMilliseconds(160));
+        StatusDetailTextBlock.BeginAnimation(
+            OpacityProperty,
+            new DoubleAnimation(0.46, 0.58, duration) { EasingFunction = easing },
+            HandoffBehavior.SnapshotAndReplace);
+        StatusDetailTranslateTransform.BeginAnimation(
+            System.Windows.Media.TranslateTransform.YProperty,
+            new DoubleAnimation(1.5, 0, duration) { EasingFunction = easing },
+            HandoffBehavior.SnapshotAndReplace);
     }
 
     private void PositionNearPrimaryWorkArea()

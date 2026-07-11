@@ -9,7 +9,7 @@ macOS menu bar companion app. Lives entirely in the macOS status bar (no dock ic
 
 For the macOS app, all API keys live on a Cloudflare Worker proxy; nothing sensitive ships in the app. The separate Windows prototype may instead store direct Anthropic or OpenAI keys in Windows Credential Manager, as described below.
 
-The repository also contains `windows/`, a separate .NET 10 WPF Clicky prototype. It captures the foreground application before accepting a typed or foot-pedal voice question, then uses the active-window title and screenshot to guide one visible action at a time in any desktop app. Adobe apps, Visual Studio, and Rive are examples, not explicit integrations. It supports the existing Worker `/chat` route plus direct Anthropic and OpenAI modes, local `System.Speech` dictation, a configurable global F13-F24 pedal key, terminal `POINT` parsing, and a click-through non-activating cue. It has no TTS/audio playback, persisted non-secret settings, installer, or live API E2E verification yet.
+The repository also contains `windows/`, a separate .NET 10 WPF Clicky prototype. It captures the foreground application before accepting a typed or foot-pedal voice question, then uses the active-window title and screenshot to guide one visible action at a time in any desktop app. Adobe apps, Visual Studio, and Rive are examples, not explicit integrations. Its primary architecture is local-first BYOK with direct OpenAI, Anthropic, and Gemini chat, optional OpenAI or ElevenLabs speech output, local `System.Speech` dictation, durable SQLite conversations, persisted non-secret settings, a configurable global F13-F24 pedal key, terminal `POINT` parsing, and a click-through non-activating cue. The legacy Worker `/chat` transport remains for compatibility. It has no installer or live API E2E verification yet.
 
 ## Architecture
 
@@ -31,12 +31,12 @@ The repository also contains `windows/`, a separate .NET 10 WPF Clicky prototype
 - **Pattern**: MVVM-style view model plus `CompanionSessionCoordinator` state machine. `App.xaml.cs` performs explicit startup composition.
 - **Focus-safe capture**: The compact companion is non-activating. `TutorInteractionService.PrepareAsync` captures the current foreground window before `CompanionWindow` activates and focuses the typed-question box.
 - **Screen Capture**: `ActiveWindowCaptureService` snapshots the foreground HWND/bounds/title, rejects sources above 40 million pixels, then performs GDI copy and JPEG work off the UI thread. The default-on optimization leaves captures at or below 1920x1080 at full size; when either dimension exceeds that threshold, it encodes both dimensions at half scale with JPEG quality 88 while preserving the original physical bounds for point mapping. There is no full-display, multi-display, or occlusion-independent capture path yet.
-- **AI Chat**: `ProviderRoutingChatClient` snapshots and routes each request to the configured Worker, direct Anthropic Messages API, or direct OpenAI Responses API client. `VisualGuideTutor` supplies the generic screenshot-grounded prompt and up to 10 conversation turns are retained in memory.
-- **Voice Input**: A global low-level keyboard monitor listens for the configurable F13-F24 foot-pedal key, default F13. Press starts local `System.Speech` dictation and prepares the active-window capture; release finalizes the transcript and sends it through the selected Worker, Anthropic, or OpenAI chat provider. An installed Windows recognition language and usable default microphone are required.
+- **AI Chat**: `ProviderRoutingChatClient` snapshots and routes each request to direct OpenAI Responses, Anthropic Messages, or Gemini `streamGenerateContent`; the Worker route remains a compatibility path. `VisualGuideTutor` supplies the generic screenshot-grounded prompt. Ten active turns are retained for context, while successful turns and bounded summaries persist in local SQLite.
+- **Voice Input and output**: A global low-level keyboard monitor listens for the configurable F13-F24 foot-pedal key, default F13. Press starts local `System.Speech` dictation and prepares the active-window capture; release finalizes the transcript and sends it through the selected provider. Optional OpenAI or ElevenLabs WAV speech output begins only after a successful answer and is cancelled by the next interaction.
 - **Element Pointing and motion**: The tutor must end with `[POINT:x,y:label]`, `[POINT:x,y:label:screenN]`, or `[POINT:none]`. The parser strips the directive, the mapper converts capture pixels to physical desktop coordinates, and a topmost transparent overlay displays the target without activation or hit testing. Default-on cue motion is enabled only when both Clicky's motion toggle and the Windows reduced-motion preference allow it; the real mouse pointer is never moved.
-- **Settings and secrets**: Provider, Worker URL, model IDs, capture optimization, motion, pedal key, and other non-secret settings are memory-only. Direct Anthropic/OpenAI keys persist in Windows Credential Manager under `Clicky/ProviderApiKey/v1/{provider}` and are never redisplayed; legacy Knobnote targets migrate on first use. Capture-only-during-request, companion exclusion, large-capture optimization, and motion are on; pointer, local retention, and all-displays are off. GDI capture does not explicitly remove visible Clicky overlap.
+- **Settings, persistence, and secrets**: Non-secret preferences persist atomically in `%LocalAppData%\Clicky\settings.json`. Conversation text and metadata persist in `%LocalAppData%\Clicky\clicky.db` using versioned SQLite/WAL; screenshots and secrets are excluded. OpenAI, Anthropic, Gemini, and ElevenLabs keys persist in Windows Credential Manager under `Clicky/ProviderApiKey/v1/{provider}` and are never redisplayed; legacy Knobnote targets migrate on first use.
 - **Branding and startup**: Embedded `Clicky.png` and `Clicky.ico` resources provide companion, splash, tray, and executable artwork. Startup shows a reduced-motion-aware, non-activating animated splash for a nominal 1.35 seconds and is currently silent.
-- **Verification boundary**: Windows tests use fakes and local HTTP/SSE fixtures. Do not claim live Cloudflare Worker, Anthropic, or OpenAI API E2E verification unless it is explicitly performed and evidenced.
+- **Verification boundary**: Windows tests use fakes and local HTTP/SSE fixtures. Do not claim live Cloudflare Worker, Anthropic, OpenAI, Gemini, or ElevenLabs API E2E verification unless it is explicitly performed and evidenced.
 
 See `windows/README.md` for setup and limitations and `windows/ARCHITECTURE.md` for the full component flow.
 
@@ -106,13 +106,15 @@ Worker vars: `ELEVENLABS_VOICE_ID`
 | `windows/src/Clicky.Windows/Capture/ActiveWindowCaptureService.cs` | Foreground-window DWM bounds, GDI capture, and settings-aware image processing. |
 | `windows/src/Clicky.Windows/Capture/CaptureOptimizationPolicy.cs` | Default-on 1920x1080 threshold and half-scale encoding plan. |
 | `windows/src/Clicky.Windows/Capture/CaptureImageProcessor.cs` | Resizing/JPEG pipeline that preserves physical capture bounds. |
-| `windows/src/Clicky.Windows/Interaction/TutorInteractionService.cs` | General visual-guide requests, 10-turn in-memory history, `POINT` parsing, and coordinate mapping. |
+| `windows/src/Clicky.Windows/Interaction/TutorInteractionService.cs` | General visual-guide requests, streamed visible text, 10-turn active context, durable turn persistence, `POINT` parsing, and coordinate mapping. |
 | `windows/src/Clicky.Windows/Tutoring/VisualGuideTutor.cs` | Generic screenshot-grounded visual-guide prompt and terminal `POINT` contract. |
-| `windows/src/Clicky.Windows/Networking/` | Provider routing, Worker/Anthropic/OpenAI serialization, authentication, and SSE parsing. |
+| `windows/src/Clicky.Windows/Networking/` | Provider routing plus Worker, Anthropic, OpenAI, and Gemini serialization, authentication, and SSE parsing. |
 | `windows/src/Clicky.Windows/Overlay/` | DPI-aware, click-through, non-activating point cue. |
 | `windows/src/Clicky.Windows/Shell/TrayIconHost.cs` | Notification-area icon and commands. |
 | `windows/src/Clicky.Windows/Configuration/CompanionSettings.cs` | In-memory provider, model, capture optimization, and privacy defaults. |
-| `windows/src/Clicky.Windows/Providers/WindowsCredentialApiKeyStore.cs` | Anthropic/OpenAI keys stored under Clicky-owned Windows Credential Manager targets. |
+| `windows/src/Clicky.Windows/Persistence/` | Versioned SQLite repository for conversation titles, summaries, transcripts, and provider/window metadata. |
+| `windows/src/Clicky.Windows/Speech/` | OpenAI and ElevenLabs BYOK synthesis, provider routing, and cancellable WAV playback. |
+| `windows/src/Clicky.Windows/Providers/WindowsCredentialApiKeyStore.cs` | OpenAI, Anthropic, Gemini, and ElevenLabs keys stored under Clicky-owned Windows Credential Manager targets. |
 | `windows/src/Clicky.Windows/Shell/StartupSplashWindow.xaml(.cs)` | Reduced-motion-aware, non-activating startup animation. |
 | `windows/src/Clicky.Windows/Assets/Clicky.{png,ico}` | Windows companion, splash, tray, and executable artwork. |
 | `windows/tests/Clicky.Windows.Tests/` | Unit and local-fixture coverage; not live API E2E coverage. |
@@ -151,7 +153,7 @@ Or use the repository-local SDK:
 .\.dotnet\dotnet.exe run --project .\windows\src\Clicky.Windows\Clicky.Windows.csproj
 ```
 
-Real answers require either a compatible Worker URL or a direct Anthropic/OpenAI key configured in Clicky Settings. Non-secret values are held only in memory; direct keys persist in Windows Credential Manager. Building and running unit tests does not verify live Worker or provider access end to end.
+Real answers require a direct OpenAI, Anthropic, or Gemini key configured in Clicky Settings. Non-secret values and successful conversation transcripts persist locally; provider keys persist only in Windows Credential Manager. Building and running unit tests does not verify live provider access end to end.
 
 ## Cloudflare Worker
 

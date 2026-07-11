@@ -5,4 +5,6 @@ public enum AiProviderKind
     Worker,
     Anthropic,
     OpenAI,
+    Gemini,
+    ElevenLabs,
 }

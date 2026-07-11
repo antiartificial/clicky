@@ -11,6 +11,7 @@ public sealed class ProviderRoutingChatClientTests
     [DataRow(AiProviderKind.Worker, "worker")]
     [DataRow(AiProviderKind.Anthropic, "anthropic")]
     [DataRow(AiProviderKind.OpenAI, "openai")]
+    [DataRow(AiProviderKind.Gemini, "gemini")]
     public async Task StreamChatAsync_RoutesToSelectedProvider(
         AiProviderKind provider,
         string expectedChunk)
@@ -19,7 +20,8 @@ public sealed class ProviderRoutingChatClientTests
         var worker = new RecordingClient("worker");
         var anthropic = new RecordingClient("anthropic");
         var openAI = new RecordingClient("openai");
-        var router = new ProviderRoutingChatClient(settings, worker, anthropic, openAI);
+        var gemini = new RecordingClient("gemini");
+        var router = new ProviderRoutingChatClient(settings, worker, anthropic, openAI, gemini);
 
         var chunks = await ReadAllAsync(router.StreamChatAsync(CreateRequest()));
 
@@ -27,6 +29,7 @@ public sealed class ProviderRoutingChatClientTests
         Assert.AreEqual(provider == AiProviderKind.Worker ? 1 : 0, worker.CallCount);
         Assert.AreEqual(provider == AiProviderKind.Anthropic ? 1 : 0, anthropic.CallCount);
         Assert.AreEqual(provider == AiProviderKind.OpenAI ? 1 : 0, openAI.CallCount);
+        Assert.AreEqual(provider == AiProviderKind.Gemini ? 1 : 0, gemini.CallCount);
     }
 
     [TestMethod]
@@ -39,7 +42,8 @@ public sealed class ProviderRoutingChatClientTests
             settings,
             worker,
             anthropic,
-            new RecordingClient("openai"));
+            new RecordingClient("openai"),
+            new RecordingClient("gemini"));
 
         var stream = router.StreamChatAsync(CreateRequest());
         settings.SelectedProvider = AiProviderKind.Anthropic;
