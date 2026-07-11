@@ -1339,20 +1339,67 @@
                     <TextBlock x:Name="StatusDetailTextBlock"
                                Grid.Row="1"
                                MinHeight="16"
-                               MaxHeight="32"
-                               Margin="45,2,0,0"
                                VerticalAlignment="Top"
                                Text="{Binding StatusDetail}"
                                FontSize="11"
                                LineHeight="14"
                                LineStackingStrategy="BlockLineHeight"
-                               TextWrapping="Wrap"
+                               ToolTip="{Binding StatusDetail}"
                                Foreground="{StaticResource WarmWhiteBrush}"
                                Opacity="0.58">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="MaxHeight" Value="32" />
+                                <Setter Property="Margin" Value="45,2,0,0" />
+                                <Setter Property="TextWrapping" Value="Wrap" />
+                                <Setter Property="TextTrimming" Value="None" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsConversationVisible}" Value="False">
+                                        <Setter Property="MaxHeight" Value="16" />
+                                        <Setter Property="Margin" Value="45,2,76,0" />
+                                        <Setter Property="TextWrapping" Value="NoWrap" />
+                                        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
                         <TextBlock.RenderTransform>
                             <TranslateTransform x:Name="StatusDetailTranslateTransform" />
                         </TextBlock.RenderTransform>
                     </TextBlock>
+
+                    <Button Grid.Row="1"
+                            Padding="6,2"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Click="OpenConversationButton_Click"
+                            ToolTip="{x:Static branding:BrandText.OpenConversationTooltip}"
+                            AutomationProperties.Name="{x:Static branding:BrandText.OpenConversationTooltip}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource HeaderTextButtonStyle}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding HasConversation}" Value="True" />
+                                            <Condition Binding="{Binding IsConversationVisible}" Value="False" />
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Margin="0,0,4,0"
+                                       VerticalAlignment="Center"
+                                       FontFamily="Segoe MDL2 Assets"
+                                       FontSize="11"
+                                       Text="&#xE8BD;" />
+                            <TextBlock VerticalAlignment="Center"
+                                       FontSize="10"
+                                       Text="{x:Static branding:BrandText.OpenConversationLabel}" />
+                        </StackPanel>
+                    </Button>
                 </Grid>
 
                 <Button Grid.Column="3"
@@ -1432,6 +1479,7 @@
                         <RowDefinition Height="30" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <Grid>
@@ -1455,15 +1503,6 @@
                                    Foreground="{StaticResource WarmWhiteBrush}" />
                         <StackPanel Grid.Column="2" Orientation="Horizontal">
                             <Button Style="{StaticResource IconButtonStyle}"
-                                    Command="{Binding AdvanceSessionCommand}"
-                                    ToolTip="{x:Static branding:BrandText.StartTypedQuestionTooltip}"
-                                    AutomationProperties.Name="{x:Static branding:BrandText.StartTypedQuestionTooltip}">
-                                <TextBlock FontFamily="Segoe MDL2 Assets"
-                                           FontSize="13"
-                                           Text="&#xE710;" />
-                            </Button>
-                            <Button Margin="3,0,0,0"
-                                    Style="{StaticResource IconButtonStyle}"
                                     Command="{Binding ClearConversationCommand}"
                                     ToolTip="{x:Static branding:BrandText.ClearConversationTooltip}"
                                     AutomationProperties.Name="{x:Static branding:BrandText.ClearConversationTooltip}"
@@ -1641,6 +1680,64 @@
                                        Visibility="{Binding IsConversationEmpty, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         </Grid>
                     </ScrollViewer>
+
+                    <Border Grid.Row="3"
+                            Height="48"
+                            Margin="0,10,0,0"
+                            Background="{StaticResource GraphiteRaisedBrush}"
+                            BorderBrush="{StaticResource GraphiteLineBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            IsEnabled="{Binding CanContinueActiveConversation}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="38" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="FollowUpTextBox"
+                                     Padding="10,7"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     Foreground="{StaticResource WarmWhiteBrush}"
+                                     CaretBrush="{StaticResource SignalLimeBrush}"
+                                     SelectionBrush="{StaticResource StudioTealBrush}"
+                                     FontSize="12"
+                                     TextWrapping="NoWrap"
+                                     AcceptsReturn="False"
+                                     VerticalContentAlignment="Center"
+                                     AutomationProperties.Name="{x:Static branding:BrandText.FollowUpInputLabel}"
+                                     Text="{Binding FollowUpQuestion, UpdateSourceTrigger=PropertyChanged}"
+                                     KeyDown="FollowUpTextBox_KeyDown" />
+                            <TextBlock Margin="10,0,44,0"
+                                       VerticalAlignment="Center"
+                                       FontSize="12"
+                                       Foreground="{StaticResource WarmWhiteBrush}"
+                                       Opacity="0.38"
+                                       IsHitTestVisible="False"
+                                       Text="{x:Static branding:BrandText.FollowUpPlaceholder}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding FollowUpQuestion}" Value="">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <Button Grid.Column="1"
+                                    Margin="2"
+                                    Style="{StaticResource IconButtonStyle}"
+                                    Command="{Binding SubmitFollowUpCommand}"
+                                    ToolTip="{x:Static branding:BrandText.SubmitFollowUpTooltip}"
+                                    AutomationProperties.Name="{x:Static branding:BrandText.SubmitFollowUpTooltip}">
+                                <TextBlock FontFamily="Segoe MDL2 Assets"
+                                           FontSize="15"
+                                           Text="&#xE724;" />
+                            </Button>
+                        </Grid>
+                    </Border>
                 </Grid>
             </Border>
 

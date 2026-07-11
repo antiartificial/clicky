@@ -22,7 +22,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 {
     private const double CompactWindowHeight = 190;
     private const double SettingsWindowHeight = 680;
-    private const double ConversationWindowHeight = 520;
+    private const double ConversationWindowHeight = 590;
 
     private readonly CompanionSessionCoordinator sessionCoordinator;
     private readonly TutorInteractionService tutorInteractionService;
@@ -38,11 +38,13 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? interactionCancellationSource;
     private CancellationTokenSource? openAIOnboardingCancellationSource;
     private PreparedTutorInteraction? preparedInteraction;
+    private PreparedTutorInteraction? lastSuccessfulPreparation;
     private CompanionInteractionId? activeQuestionInteractionId;
     private bool isQuestionEntryVisible;
     private bool isSettingsVisible;
     private bool isConversationVisible;
     private string question = string.Empty;
+    private string followUpQuestion = string.Empty;
     private string responseText = string.Empty;
     private string activeQuestionText = string.Empty;
     private IReadOnlyList<TutorConversationTurn> conversationTurns = [];
@@ -100,6 +102,9 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         SubmitQuestionCommand = new RelayCommand(
             () => _ = SubmitQuestionAsync(),
             CanSubmitQuestion);
+        SubmitFollowUpCommand = new RelayCommand(
+            () => _ = SubmitFollowUpAsync(),
+            CanSubmitFollowUp);
         CancelSessionCommand = new RelayCommand(
             CancelCurrentInteraction,
             () => State != CompanionSessionState.Idle);
@@ -177,6 +182,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref selectedStoredConversation, value))
             {
+                OnPropertyChanged(nameof(CanContinueActiveConversation));
+                SubmitFollowUpCommand.RaiseCanExecuteChanged();
                 _ = LoadSelectedStoredConversationAndObserveAsync(value);
             }
         }
@@ -298,9 +305,25 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             if (SetProperty(ref isConversationVisible, value))
             {
                 OnPropertyChanged(nameof(WindowHeight));
+                SubmitFollowUpCommand.RaiseCanExecuteChanged();
             }
         }
     }
+
+    public string FollowUpQuestion
+    {
+        get => followUpQuestion;
+        set
+        {
+            if (SetProperty(ref followUpQuestion, value ?? string.Empty))
+            {
+                SubmitFollowUpCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool CanContinueActiveConversation =>
+        lastSuccessfulPreparation is not null && SelectedStoredConversation is null;
 
     public double WindowHeight => IsSettingsVisible
         ? SettingsWindowHeight
@@ -446,6 +469,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
     public RelayCommand SubmitQuestionCommand { get; }
 
+    public RelayCommand SubmitFollowUpCommand { get; }
+
     public RelayCommand CancelSessionCommand { get; }
 
     public RelayCommand SelectWorkerProviderCommand { get; }
@@ -577,6 +602,10 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         }
 
         tutorInteractionService.ClearHistory();
+        lastSuccessfulPreparation = null;
+        FollowUpQuestion = string.Empty;
+        OnPropertyChanged(nameof(CanContinueActiveConversation));
+        SubmitFollowUpCommand.RaiseCanExecuteChanged();
         SelectedStoredConversation = null;
         RefreshConversationTurns();
         ClearActiveQuestion();
@@ -606,6 +635,10 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         {
             await CancelCurrentInteractionAsync();
             tutorInteractionService.ClearHistory();
+            lastSuccessfulPreparation = null;
+            FollowUpQuestion = string.Empty;
+            OnPropertyChanged(nameof(CanContinueActiveConversation));
+            SubmitFollowUpCommand.RaiseCanExecuteChanged();
             RefreshConversationTurns();
             Settings.SelectedProvider = provider;
             NotifyProviderChanged();
@@ -778,6 +811,70 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
                 preparation,
                 submittedQuestion,
                 cancellationSource);
+        }
+        finally
+        {
+            if (ReferenceEquals(interactionCancellationSource, cancellationSource))
+            {
+                interactionCancellationSource = null;
+                cancellationSource.Dispose();
+            }
+        }
+    }
+
+    public async Task SubmitFollowUpAsync()
+    {
+        if (!CanSubmitFollowUp())
+        {
+            return;
+        }
+
+        var sourcePreparation = lastSuccessfulPreparation!;
+        var submittedQuestion = FollowUpQuestion.Trim();
+        var conversationTurnCountBeforeSubmission = ConversationTurns.Count;
+
+        CancelSpeechOutput();
+        CancelInteractionToken();
+        ClearActiveQuestion();
+        ResponseText = string.Empty;
+        responseStatusText = BrandText.RespondingStatus;
+        FollowUpQuestion = string.Empty;
+
+        var interactionId = sessionCoordinator.BeginListening();
+        var cancellationSource = new CancellationTokenSource();
+        interactionCancellationSource = cancellationSource;
+
+        try
+        {
+            try
+            {
+                await HideCueIfCurrentAsync(interactionId);
+            }
+            catch (Exception exception)
+            {
+                System.Diagnostics.Trace.TraceWarning(
+                    "Clicky could not hide the previous cue before a follow-up: {0}",
+                    exception.Message);
+            }
+
+            var preparation = tutorInteractionService.PrepareFollowUp(sourcePreparation);
+            if (!sessionCoordinator.BeginProcessing(interactionId))
+            {
+                return;
+            }
+
+            SetActiveQuestion(interactionId, submittedQuestion);
+            var responseSucceeded = await RespondWithPreparedInteractionAsync(
+                interactionId,
+                preparation,
+                submittedQuestion,
+                cancellationSource);
+            if (!responseSucceeded &&
+                !cancellationSource.IsCancellationRequested &&
+                ConversationTurns.Count == conversationTurnCountBeforeSubmission)
+            {
+                FollowUpQuestion = submittedQuestion;
+            }
         }
         finally
         {
@@ -983,12 +1080,13 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task RespondWithPreparedInteractionAsync(
+    private async Task<bool> RespondWithPreparedInteractionAsync(
         CompanionInteractionId interactionId,
         PreparedTutorInteraction preparation,
         string prompt,
         CancellationTokenSource cancellationSource)
     {
+        var responseSucceeded = false;
         try
         {
             var streamedResponseText = new System.Text.StringBuilder();
@@ -1009,17 +1107,21 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
                 cancellationSource.Token);
             if (!IsCurrent(interactionId) || cancellationSource.IsCancellationRequested)
             {
-                return;
+                return false;
             }
 
             LastInteractionResult = result;
+            lastSuccessfulPreparation = preparation;
             selectedStoredConversation = null;
             OnPropertyChanged(nameof(SelectedStoredConversation));
+            OnPropertyChanged(nameof(CanContinueActiveConversation));
+            SubmitFollowUpCommand.RaiseCanExecuteChanged();
             RefreshConversationTurns();
             _ = RefreshStoredConversationsAndObserveAsync();
             await PresentResultCueIfCurrentAsync(interactionId, result);
             ShowResponse(interactionId, BrandText.RespondingStatus, result.SpokenText);
             StartSpeechOutput(result.SpokenText);
+            responseSucceeded = true;
         }
         catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
         {
@@ -1060,6 +1162,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         {
             ClearActiveQuestionIfCurrent(interactionId);
         }
+
+        return responseSucceeded;
     }
 
     private void StartSpeechOutput(string responseText)
@@ -1138,6 +1242,12 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
     private bool CanSubmitQuestion() =>
         IsQuestionEntryVisible && !string.IsNullOrWhiteSpace(Question);
+
+    private bool CanSubmitFollowUp() =>
+        IsConversationVisible &&
+        CanContinueActiveConversation &&
+        !string.IsNullOrWhiteSpace(FollowUpQuestion) &&
+        State is CompanionSessionState.Idle or CompanionSessionState.Responding;
 
     private bool CanChangeProviderSettings() =>
         IsSettingsVisible && State == CompanionSessionState.Idle && !IsProviderOperationBusy;
@@ -1717,6 +1827,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(StatusDetail));
         AdvanceSessionCommand.RaiseCanExecuteChanged();
         SubmitQuestionCommand.RaiseCanExecuteChanged();
+        SubmitFollowUpCommand.RaiseCanExecuteChanged();
         CancelSessionCommand.RaiseCanExecuteChanged();
         ClearConversationCommand.RaiseCanExecuteChanged();
         OnPropertyChanged(nameof(CanSaveApiKey));

@@ -79,6 +79,41 @@ public sealed class TutorInteractionServiceTests
     }
 
     [TestMethod]
+    public async Task PrepareFollowUp_ReusesCaptureWithLatestConversationHistory()
+    {
+        var captureCount = 0;
+        var requests = new List<WorkerChatRequest>();
+        var service = new TutorInteractionService(
+            new FakeCaptureService((_) =>
+            {
+                captureCount++;
+                return Task.FromResult(CreateCapture(title: "Visual Studio - App.xaml"));
+            }),
+            new FakeWorkerClient((request, _) =>
+            {
+                requests.Add(request);
+                return Stream(requests.Count == 1
+                    ? "Open the designer. [POINT:200,100:designer]"
+                    : "Use the properties panel. [POINT:600,300:properties panel]");
+            }));
+
+        var firstPreparation = await service.PrepareAsync();
+        await service.RespondAsync(firstPreparation, "Where should I start?");
+        var followUpPreparation = service.PrepareFollowUp(firstPreparation);
+        await service.RespondAsync(followUpPreparation, "What should I change there?");
+
+        Assert.AreEqual(1, captureCount);
+        Assert.HasCount(2, requests);
+        Assert.HasCount(1, requests[1].ConversationHistory);
+        Assert.AreEqual("Where should I start?", requests[1].ConversationHistory[0].UserText);
+        Assert.AreEqual("Open the designer.", requests[1].ConversationHistory[0].AssistantText);
+        CollectionAssert.AreEqual(
+            requests[0].Images[0].ImageBytes.ToArray(),
+            requests[1].Images[0].ImageBytes.ToArray());
+        Assert.HasCount(2, service.GetConversationHistorySnapshot());
+    }
+
+    [TestMethod]
     public async Task SettingsAwareWorkerClient_UsesCurrentUrlForEveryRequest()
     {
         var settings = new CompanionSettings

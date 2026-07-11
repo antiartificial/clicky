@@ -15,6 +15,11 @@ public static class BrandText
     public const string ClearConversationTooltip = "Start a new conversation";
     public const string ConversationHistoryLabel = "Past conversations";
     public const string EmptyConversation = "No conversation selected.";
+    public const string OpenConversationLabel = "Open chat";
+    public const string OpenConversationTooltip = "Open this conversation";
+    public const string FollowUpInputLabel = "Follow-up question about this screen";
+    public const string FollowUpPlaceholder = "Ask a follow-up...";
+    public const string SubmitFollowUpTooltip = "Send follow-up";
     public const string AiProviderLabel = "AI provider";
     public const string WorkerProviderLabel = "Worker";
     public const string AnthropicProviderLabel = "Anthropic";

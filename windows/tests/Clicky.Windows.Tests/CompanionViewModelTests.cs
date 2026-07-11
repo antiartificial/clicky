@@ -85,6 +85,96 @@ public sealed class CompanionViewModelTests
     }
 
     [TestMethod]
+    public async Task SubmitFollowUpAsync_ReusesScreenAndAppendsToActiveConversation()
+    {
+        var captureCount = 0;
+        var requests = new List<WorkerChatRequest>();
+        var viewModel = CreateViewModel(
+            new FakeCaptureService((_) =>
+            {
+                captureCount++;
+                return Task.FromResult(CreateCapture());
+            }),
+            new FakeWorkerClient((request, _) =>
+            {
+                requests.Add(request);
+                return Stream(requests.Count == 1
+                    ? "Open Solution Explorer. [POINT:400,300:solution explorer]"
+                    : "Right-click the project. [POINT:350,340:project]"
+                );
+            }));
+
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "Where is the project?";
+        await viewModel.SubmitQuestionAsync();
+
+        viewModel.SetConversationVisible(true);
+        viewModel.FollowUpQuestion = "What do I do next?";
+        Assert.IsTrue(viewModel.SubmitFollowUpCommand.CanExecute(null));
+
+        await viewModel.SubmitFollowUpAsync();
+
+        Assert.AreEqual(1, captureCount);
+        Assert.HasCount(2, requests);
+        Assert.HasCount(1, requests[1].ConversationHistory);
+        Assert.AreEqual("Where is the project?", requests[1].ConversationHistory[0].UserText);
+        Assert.AreEqual(string.Empty, viewModel.FollowUpQuestion);
+        Assert.HasCount(2, viewModel.ConversationTurns);
+        Assert.AreEqual("What do I do next?", viewModel.ConversationTurns[1].UserText);
+        Assert.AreEqual("Right-click the project.", viewModel.ConversationTurns[1].AssistantText);
+        Assert.AreEqual(CompanionSessionState.Responding, viewModel.State);
+    }
+
+    [TestMethod]
+    public async Task SubmitFollowUpAsync_ProviderFailureRestoresDraft()
+    {
+        var requestCount = 0;
+        var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) => ++requestCount == 1
+                ? Stream("Open Solution Explorer. [POINT:400,300:solution explorer]")
+                : OpenAIAuthenticationFailure("provider failure")));
+
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "Where is the project?";
+        await viewModel.SubmitQuestionAsync();
+        viewModel.SetConversationVisible(true);
+        viewModel.FollowUpQuestion = "What should I click next?";
+
+        await viewModel.SubmitFollowUpAsync();
+
+        Assert.AreEqual("What should I click next?", viewModel.FollowUpQuestion);
+        Assert.HasCount(1, viewModel.ConversationTurns);
+        Assert.AreEqual(BrandText.ProviderSetupStatus, viewModel.StatusText);
+        Assert.IsTrue(viewModel.SubmitFollowUpCommand.CanExecute(null));
+    }
+
+    [TestMethod]
+    public async Task SubmitFollowUpAsync_CueHideFailureStillCompletesResponse()
+    {
+        var requestCount = 0;
+        var presenter = new FakePointCuePresenter(failOnHideCall: 2);
+        var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) => ++requestCount == 1
+                ? Stream("Open Solution Explorer. [POINT:400,300:solution explorer]")
+                : Stream("Select the project. [POINT:350,340:project]")),
+            presenter);
+
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "Where is the project?";
+        await viewModel.SubmitQuestionAsync();
+        viewModel.SetConversationVisible(true);
+        viewModel.FollowUpQuestion = "What next?";
+
+        await viewModel.SubmitFollowUpAsync();
+
+        Assert.HasCount(2, viewModel.ConversationTurns);
+        Assert.AreEqual("Select the project.", viewModel.ResponseText);
+        Assert.AreEqual(CompanionSessionState.Responding, viewModel.State);
+    }
+
+    [TestMethod]
     public async Task SubmitQuestionAsync_ProjectsCompletedTurnWhileActiveQuestionIsTransient()
     {
         var responseStarted = new TaskCompletionSource(
@@ -659,8 +749,10 @@ public sealed class CompanionViewModelTests
         }
     }
 
-    private sealed class FakePointCuePresenter : IPointCuePresenter
+    private sealed class FakePointCuePresenter(int? failOnHideCall = null) : IPointCuePresenter
     {
+        private int hideCallCount;
+
         public List<string> Calls { get; } = [];
 
         public Task ShowAsync(
@@ -683,6 +775,12 @@ public sealed class CompanionViewModelTests
 
         public Task HideAsync(CancellationToken cancellationToken = default)
         {
+            hideCallCount++;
+            if (hideCallCount == failOnHideCall)
+            {
+                throw new InvalidOperationException("Cue presenter unavailable.");
+            }
+
             Calls.Add("hide");
             return Task.CompletedTask;
         }

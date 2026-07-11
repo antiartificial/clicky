@@ -113,6 +113,18 @@ public sealed class TutorInteractionService
             interaction.History);
     }
 
+    public PreparedTutorInteraction PrepareFollowUp(PreparedTutorInteraction source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        var interaction = BeginInteraction();
+        return new PreparedTutorInteraction(
+            interaction.Id,
+            interaction.HistoryGeneration,
+            source.Capture,
+            interaction.History);
+    }
+
     public async Task<TutorInteractionResult> RespondAsync(
         PreparedTutorInteraction interaction,
         string userPrompt,

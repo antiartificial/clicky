@@ -127,7 +127,16 @@ public partial class CompanionWindow : Window
 
     private void ConversationButton_Click(object sender, RoutedEventArgs routedEventArgs)
     {
-        var shouldShowConversation = !viewModel.IsConversationVisible;
+        SetConversationPaneVisible(!viewModel.IsConversationVisible);
+    }
+
+    private void OpenConversationButton_Click(object sender, RoutedEventArgs routedEventArgs)
+    {
+        SetConversationPaneVisible(true);
+    }
+
+    private void SetConversationPaneVisible(bool shouldShowConversation)
+    {
         viewModel.SetConversationVisible(shouldShowConversation);
         SyncWindowHeight();
         PositionNearPrimaryWorkArea();
@@ -139,7 +148,15 @@ public partial class CompanionWindow : Window
             Activate();
             _ = Dispatcher.BeginInvoke(
                 DispatcherPriority.Loaded,
-                ConversationScrollViewer.ScrollToEnd);
+                () =>
+                {
+                    ConversationScrollViewer.ScrollToEnd();
+                    if (viewModel.CanContinueActiveConversation)
+                    {
+                        FollowUpTextBox.Focus();
+                        Keyboard.Focus(FollowUpTextBox);
+                    }
+                });
         }
         else if (!viewModel.IsQuestionEntryVisible)
         {
@@ -214,6 +231,18 @@ public partial class CompanionWindow : Window
 
         keyEventArgs.Handled = true;
         viewModel.SubmitQuestionCommand.Execute(parameter: null);
+    }
+
+    private void FollowUpTextBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs keyEventArgs)
+    {
+        if (keyEventArgs.Key != Key.Enter ||
+            !viewModel.SubmitFollowUpCommand.CanExecute(parameter: null))
+        {
+            return;
+        }
+
+        keyEventArgs.Handled = true;
+        viewModel.SubmitFollowUpCommand.Execute(parameter: null);
     }
 
     private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs keyEventArgs)
