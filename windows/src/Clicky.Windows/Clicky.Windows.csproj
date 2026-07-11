@@ -17,6 +17,10 @@
   <ItemGroup>
     <Resource Include="Assets\Clicky.ico" />
     <Resource Include="Assets\Clicky.png" />
+    <Resource Include="Assets\Providers\Anthropic-Symbol-Ivory.png" />
+    <Resource Include="Assets\Providers\Anthropic-Symbol-Slate.png" />
+    <Resource Include="Assets\Providers\OpenAI-Blossom-Black.png" />
+    <Resource Include="Assets\Providers\OpenAI-Blossom-White.png" />
   </ItemGroup>
 
   <ItemGroup>

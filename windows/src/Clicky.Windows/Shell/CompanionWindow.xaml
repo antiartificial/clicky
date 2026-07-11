@@ -227,6 +227,514 @@
             </Style.Triggers>
         </Style>
 
+        <Style x:Key="AnalyzerBar1Style"
+               TargetType="Rectangle"
+               BasedOn="{StaticResource MeterBarStyle}">
+            <Style.Triggers>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Listening}" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="ListeningBar1Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 From="0.58" To="1.12" Duration="0:0:0.28"
+                                                 AutoReverse="True" RepeatBehavior="Forever" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="ListeningBar1Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Processing}" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="ProcessingBar1Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                 From="0.3" To="1" Duration="0:0:0.38"
+                                                 AutoReverse="True" RepeatBehavior="Forever" />
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 From="0.3" To="0.74" Duration="0:0:0.38"
+                                                 AutoReverse="True" RepeatBehavior="Forever" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="ProcessingBar1Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Responding}" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="RespondingBar1Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 From="0.88" To="1.05" Duration="0:0:1.1"
+                                                 AutoReverse="True" RepeatBehavior="Forever" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="RespondingBar1Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Idle}" />
+                        <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Grid}}" Value="True" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="IdleHoverBar1Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 To="1.18" Duration="0:0:0.1" AutoReverse="True" FillBehavior="Stop" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="IdleHoverBar1Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Responding}" />
+                        <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Grid}}" Value="True" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="RespondingHoverBar1Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                 To="1.16" Duration="0:0:0.1" AutoReverse="True" FillBehavior="Stop" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="RespondingHoverBar1Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="AnalyzerBar2Style"
+               TargetType="Rectangle"
+               BasedOn="{StaticResource MeterBarStyle}">
+            <Style.Triggers>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Listening}" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="ListeningBar2Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 From="0.7" To="1.08" Duration="0:0:0.22"
+                                                 AutoReverse="True" RepeatBehavior="Forever" BeginTime="0:0:0.06" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="ListeningBar2Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Processing}" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="ProcessingBar2Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                 From="0.3" To="1" Duration="0:0:0.38" BeginTime="0:0:0.12"
+                                                 AutoReverse="True" RepeatBehavior="Forever" />
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 From="0.34" To="0.86" Duration="0:0:0.38" BeginTime="0:0:0.12"
+                                                 AutoReverse="True" RepeatBehavior="Forever" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="ProcessingBar2Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Responding}" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="RespondingBar2Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 From="0.9" To="1.04" Duration="0:0:1.25" BeginTime="0:0:0.12"
+                                                 AutoReverse="True" RepeatBehavior="Forever" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="RespondingBar2Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Idle}" />
+                        <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Grid}}" Value="True" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="IdleHoverBar2Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 To="1.14" BeginTime="0:0:0.035" Duration="0:0:0.1"
+                                                 AutoReverse="True" FillBehavior="Stop" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="IdleHoverBar2Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Responding}" />
+                        <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Grid}}" Value="True" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="RespondingHoverBar2Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                 To="1.14" BeginTime="0:0:0.035" Duration="0:0:0.1"
+                                                 AutoReverse="True" FillBehavior="Stop" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="RespondingHoverBar2Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="AnalyzerBar3Style"
+               TargetType="Rectangle"
+               BasedOn="{StaticResource MeterBarStyle}">
+            <Style.Triggers>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Listening}" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="ListeningBar3Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 From="0.48" To="1.08" Duration="0:0:0.34"
+                                                 AutoReverse="True" RepeatBehavior="Forever" BeginTime="0:0:0.02" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="ListeningBar3Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Processing}" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="ProcessingBar3Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                 From="0.3" To="1" Duration="0:0:0.38" BeginTime="0:0:0.24"
+                                                 AutoReverse="True" RepeatBehavior="Forever" />
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 From="0.38" To="1" Duration="0:0:0.38" BeginTime="0:0:0.24"
+                                                 AutoReverse="True" RepeatBehavior="Forever" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="ProcessingBar3Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Responding}" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="RespondingBar3Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 From="0.92" To="1.03" Duration="0:0:1.4" BeginTime="0:0:0.24"
+                                                 AutoReverse="True" RepeatBehavior="Forever" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="RespondingBar3Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Idle}" />
+                        <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Grid}}" Value="True" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="IdleHoverBar3Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 To="1.08" BeginTime="0:0:0.07" Duration="0:0:0.1"
+                                                 AutoReverse="True" FillBehavior="Stop" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="IdleHoverBar3Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Responding}" />
+                        <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Grid}}" Value="True" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="RespondingHoverBar3Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                 To="1.12" BeginTime="0:0:0.07" Duration="0:0:0.1"
+                                                 AutoReverse="True" FillBehavior="Stop" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="RespondingHoverBar3Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="AnalyzerBar4Style"
+               TargetType="Rectangle"
+               BasedOn="{StaticResource MeterBarStyle}">
+            <Style.Triggers>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Listening}" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="ListeningBar4Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 From="0.62" To="1.1" Duration="0:0:0.25"
+                                                 AutoReverse="True" RepeatBehavior="Forever" BeginTime="0:0:0.09" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="ListeningBar4Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Processing}" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="ProcessingBar4Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                 From="0.3" To="1" Duration="0:0:0.38" BeginTime="0:0:0.36"
+                                                 AutoReverse="True" RepeatBehavior="Forever" />
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 From="0.34" To="0.88" Duration="0:0:0.38" BeginTime="0:0:0.36"
+                                                 AutoReverse="True" RepeatBehavior="Forever" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="ProcessingBar4Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Responding}" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="RespondingBar4Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 From="0.9" To="1.04" Duration="0:0:1.25" BeginTime="0:0:0.36"
+                                                 AutoReverse="True" RepeatBehavior="Forever" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="RespondingBar4Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Idle}" />
+                        <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Grid}}" Value="True" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="IdleHoverBar4Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 To="1.12" BeginTime="0:0:0.105" Duration="0:0:0.1"
+                                                 AutoReverse="True" FillBehavior="Stop" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="IdleHoverBar4Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Responding}" />
+                        <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Grid}}" Value="True" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="RespondingHoverBar4Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                 To="1.14" BeginTime="0:0:0.105" Duration="0:0:0.1"
+                                                 AutoReverse="True" FillBehavior="Stop" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="RespondingHoverBar4Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="AnalyzerBar5Style"
+               TargetType="Rectangle"
+               BasedOn="{StaticResource MeterBarStyle}">
+            <Style.Triggers>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Listening}" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="ListeningBar5Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 From="0.55" To="1.14" Duration="0:0:0.3"
+                                                 AutoReverse="True" RepeatBehavior="Forever" BeginTime="0:0:0.04" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="ListeningBar5Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Processing}" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="ProcessingBar5Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                 From="0.3" To="1" Duration="0:0:0.38" BeginTime="0:0:0.48"
+                                                 AutoReverse="True" RepeatBehavior="Forever" />
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 From="0.3" To="0.76" Duration="0:0:0.38" BeginTime="0:0:0.48"
+                                                 AutoReverse="True" RepeatBehavior="Forever" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="ProcessingBar5Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Responding}" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="RespondingBar5Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 From="0.88" To="1.05" Duration="0:0:1.1" BeginTime="0:0:0.48"
+                                                 AutoReverse="True" RepeatBehavior="Forever" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="RespondingBar5Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Idle}" />
+                        <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Grid}}" Value="True" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="IdleHoverBar5Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                 To="1.16" BeginTime="0:0:0.14" Duration="0:0:0.1"
+                                                 AutoReverse="True" FillBehavior="Stop" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="IdleHoverBar5Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Responding}" />
+                        <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Grid}}" Value="True" />
+                        <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <MultiDataTrigger.EnterActions>
+                        <BeginStoryboard Name="RespondingHoverBar5Animation">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                 To="1.16" BeginTime="0:0:0.14" Duration="0:0:0.1"
+                                                 AutoReverse="True" FillBehavior="Stop" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </MultiDataTrigger.EnterActions>
+                    <MultiDataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="RespondingHoverBar5Animation" />
+                    </MultiDataTrigger.ExitActions>
+                </MultiDataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="SettingsTextBoxStyle" TargetType="TextBox">
             <Setter Property="Height" Value="30" />
             <Setter Property="Padding" Value="8,5" />
@@ -409,7 +917,8 @@
                     <ColumnDefinition Width="34" />
                 </Grid.ColumnDefinitions>
 
-                <Button Grid.Column="0"
+                <Button x:Name="PrimaryActionButton"
+                        Grid.Column="0"
                         Width="48"
                         Height="48"
                         HorizontalAlignment="Left"
@@ -432,10 +941,12 @@
                                 <DataTrigger Binding="{Binding State}"
                                              Value="{x:Static session:CompanionSessionState.Listening}">
                                     <Setter Property="Background" Value="{StaticResource CoralBrush}" />
+                                    <Setter Property="Opacity" Value="0.92" />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding State}"
                                              Value="{x:Static session:CompanionSessionState.Processing}">
                                     <Setter Property="Background" Value="{StaticResource MeterAmberBrush}" />
+                                    <Setter Property="Opacity" Value="0.92" />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding State}"
                                              Value="{x:Static session:CompanionSessionState.Responding}">
@@ -445,10 +956,185 @@
                             </Style.Triggers>
                         </Style>
                     </Button.Style>
-                    <TextBlock FontFamily="Segoe MDL2 Assets"
-                               FontSize="20"
-                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                               Text="&#xE720;" />
+                    <Grid Width="30"
+                          Height="30"
+                          RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform>
+                            <ScaleTransform ScaleX="1" ScaleY="1" />
+                        </Grid.RenderTransform>
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                       Value="True" />
+                                            <Condition Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                       Value="True" />
+                                            <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                                        </MultiDataTrigger.Conditions>
+                                        <MultiDataTrigger.EnterActions>
+                                            <BeginStoryboard Name="MicrophoneHoverAnimation">
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                                     To="1.08" Duration="0:0:0.09" AutoReverse="True">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <CubicEase EasingMode="EaseOut" />
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                    <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                                     To="1.08" Duration="0:0:0.09" AutoReverse="True">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <CubicEase EasingMode="EaseOut" />
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </MultiDataTrigger.EnterActions>
+                                        <MultiDataTrigger.ExitActions>
+                                            <RemoveStoryboard BeginStoryboardName="MicrophoneHoverAnimation" />
+                                        </MultiDataTrigger.ExitActions>
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+
+                        <Ellipse Margin="2"
+                                 Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                 StrokeThickness="1.25"
+                                 RenderTransformOrigin="0.5,0.5">
+                            <Ellipse.RenderTransform>
+                                <ScaleTransform ScaleX="0.78" ScaleY="0.78" />
+                            </Ellipse.RenderTransform>
+                            <Ellipse.Style>
+                                <Style TargetType="Ellipse">
+                                    <Setter Property="Opacity" Value="0" />
+                                    <Style.Triggers>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Listening}" />
+                                                <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <MultiDataTrigger.EnterActions>
+                                                <BeginStoryboard Name="ListeningMicrophoneRingAnimation">
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                         From="0.08" To="0.42" Duration="0:0:0.32"
+                                                                         AutoReverse="True" RepeatBehavior="Forever" />
+                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                                         From="0.76" To="1.02" Duration="0:0:0.32"
+                                                                         AutoReverse="True" RepeatBehavior="Forever" />
+                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                                         From="0.76" To="1.02" Duration="0:0:0.32"
+                                                                         AutoReverse="True" RepeatBehavior="Forever" />
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </MultiDataTrigger.EnterActions>
+                                            <MultiDataTrigger.ExitActions>
+                                                <RemoveStoryboard BeginStoryboardName="ListeningMicrophoneRingAnimation" />
+                                            </MultiDataTrigger.ExitActions>
+                                        </MultiDataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Processing}" />
+                                                <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <MultiDataTrigger.EnterActions>
+                                                <BeginStoryboard Name="ProcessingMicrophoneRingAnimation">
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                         From="0.12" To="0.34" Duration="0:0:0.58"
+                                                                         AutoReverse="True" RepeatBehavior="Forever" />
+                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                                         From="0.82" To="1.04" Duration="0:0:0.58"
+                                                                         AutoReverse="True" RepeatBehavior="Forever" />
+                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                                         From="0.82" To="1.04" Duration="0:0:0.58"
+                                                                         AutoReverse="True" RepeatBehavior="Forever" />
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </MultiDataTrigger.EnterActions>
+                                            <MultiDataTrigger.ExitActions>
+                                                <RemoveStoryboard BeginStoryboardName="ProcessingMicrophoneRingAnimation" />
+                                            </MultiDataTrigger.ExitActions>
+                                        </MultiDataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding State}" Value="{x:Static session:CompanionSessionState.Responding}" />
+                                                <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <MultiDataTrigger.EnterActions>
+                                                <BeginStoryboard Name="RespondingMicrophoneRingAnimation">
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                         From="0.08" To="0.24" Duration="0:0:0.95"
+                                                                         AutoReverse="True" RepeatBehavior="Forever" />
+                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                                         From="0.9" To="1.03" Duration="0:0:0.95"
+                                                                         AutoReverse="True" RepeatBehavior="Forever" />
+                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                                         From="0.9" To="1.03" Duration="0:0:0.95"
+                                                                         AutoReverse="True" RepeatBehavior="Forever" />
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </MultiDataTrigger.EnterActions>
+                                            <MultiDataTrigger.ExitActions>
+                                                <RemoveStoryboard BeginStoryboardName="RespondingMicrophoneRingAnimation" />
+                                            </MultiDataTrigger.ExitActions>
+                                        </MultiDataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Ellipse.Style>
+                        </Ellipse>
+                        <Ellipse Margin="1"
+                                 Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                 StrokeThickness="1"
+                                 RenderTransformOrigin="0.5,0.5">
+                            <Ellipse.RenderTransform>
+                                <ScaleTransform ScaleX="0.7" ScaleY="0.7" />
+                            </Ellipse.RenderTransform>
+                            <Ellipse.Style>
+                                <Style TargetType="Ellipse">
+                                    <Setter Property="Opacity" Value="0" />
+                                    <Style.Triggers>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                           Value="True" />
+                                                <Condition Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                           Value="True" />
+                                                <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
+                                            </MultiDataTrigger.Conditions>
+                                            <MultiDataTrigger.EnterActions>
+                                                <BeginStoryboard Name="MicrophoneHoverRingAnimation">
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                         From="0" To="0.42" Duration="0:0:0.14"
+                                                                         AutoReverse="True" />
+                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                                         From="0.7" To="1.06" Duration="0:0:0.14"
+                                                                         AutoReverse="True" />
+                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                                         From="0.7" To="1.06" Duration="0:0:0.14"
+                                                                         AutoReverse="True" />
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </MultiDataTrigger.EnterActions>
+                                            <MultiDataTrigger.ExitActions>
+                                                <RemoveStoryboard BeginStoryboardName="MicrophoneHoverRingAnimation" />
+                                            </MultiDataTrigger.ExitActions>
+                                        </MultiDataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Ellipse.Style>
+                        </Ellipse>
+                        <TextBlock HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontFamily="Segoe MDL2 Assets"
+                                   FontSize="20"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                   Text="&#xE720;" />
+                    </Grid>
                 </Button>
 
                 <Grid Grid.Column="2"
@@ -467,87 +1153,52 @@
                         </Grid.ColumnDefinitions>
                         <Grid Width="36"
                               Height="22"
-                              VerticalAlignment="Center"
-                              RenderTransformOrigin="0.5,1">
-                            <Grid.RenderTransform>
-                                <ScaleTransform ScaleY="1" />
-                            </Grid.RenderTransform>
-                            <Grid.Style>
-                                <Style TargetType="Grid">
-                                    <Setter Property="Opacity" Value="1" />
-                                    <Style.Triggers>
-                                        <MultiDataTrigger>
-                                            <MultiDataTrigger.Conditions>
-                                                <Condition Binding="{Binding State}"
-                                                           Value="{x:Static session:CompanionSessionState.Listening}" />
-                                                <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
-                                            </MultiDataTrigger.Conditions>
-                                            <MultiDataTrigger.EnterActions>
-                                                <BeginStoryboard Name="ListeningMeterAnimation">
-                                                    <Storyboard>
-                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                                         From="0.58"
-                                                                         To="1"
-                                                                         Duration="0:0:0.32"
-                                                                         AutoReverse="True"
-                                                                         RepeatBehavior="Forever" />
-                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                                                                         From="0.76"
-                                                                         To="1"
-                                                                         Duration="0:0:0.32"
-                                                                         AutoReverse="True"
-                                                                         RepeatBehavior="Forever" />
-                                                    </Storyboard>
-                                                </BeginStoryboard>
-                                            </MultiDataTrigger.EnterActions>
-                                            <MultiDataTrigger.ExitActions>
-                                                <RemoveStoryboard BeginStoryboardName="ListeningMeterAnimation" />
-                                            </MultiDataTrigger.ExitActions>
-                                        </MultiDataTrigger>
-                                        <MultiDataTrigger>
-                                            <MultiDataTrigger.Conditions>
-                                                <Condition Binding="{Binding State}"
-                                                           Value="{x:Static session:CompanionSessionState.Processing}" />
-                                                <Condition Binding="{Binding IsMotionEffectivelyEnabled}" Value="True" />
-                                            </MultiDataTrigger.Conditions>
-                                            <MultiDataTrigger.EnterActions>
-                                                <BeginStoryboard Name="ProcessingMeterAnimation">
-                                                    <Storyboard>
-                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                                         From="0.42"
-                                                                         To="0.95"
-                                                                         Duration="0:0:0.72"
-                                                                         AutoReverse="True"
-                                                                         RepeatBehavior="Forever" />
-                                                    </Storyboard>
-                                                </BeginStoryboard>
-                                            </MultiDataTrigger.EnterActions>
-                                            <MultiDataTrigger.ExitActions>
-                                                <RemoveStoryboard BeginStoryboardName="ProcessingMeterAnimation" />
-                                            </MultiDataTrigger.ExitActions>
-                                        </MultiDataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Grid.Style>
-                            <Rectangle Height="7"
+                              ClipToBounds="True"
+                              VerticalAlignment="Center">
+                            <Rectangle Height="20"
                                        HorizontalAlignment="Left"
-                                       Style="{StaticResource MeterBarStyle}" />
-                            <Rectangle Height="13"
+                                       RenderTransformOrigin="0.5,1"
+                                       Style="{StaticResource AnalyzerBar1Style}">
+                                <Rectangle.RenderTransform>
+                                    <ScaleTransform ScaleY="0.35" />
+                                </Rectangle.RenderTransform>
+                            </Rectangle>
+                            <Rectangle Height="20"
                                        Margin="8,0,0,0"
                                        HorizontalAlignment="Left"
-                                       Style="{StaticResource MeterBarStyle}" />
+                                       RenderTransformOrigin="0.5,1"
+                                       Style="{StaticResource AnalyzerBar2Style}">
+                                <Rectangle.RenderTransform>
+                                    <ScaleTransform ScaleY="0.65" />
+                                </Rectangle.RenderTransform>
+                            </Rectangle>
                             <Rectangle Height="20"
                                        Margin="16,0,0,0"
                                        HorizontalAlignment="Left"
-                                       Style="{StaticResource MeterBarStyle}" />
-                            <Rectangle Height="14"
+                                       RenderTransformOrigin="0.5,1"
+                                       Style="{StaticResource AnalyzerBar3Style}">
+                                <Rectangle.RenderTransform>
+                                    <ScaleTransform ScaleY="1" />
+                                </Rectangle.RenderTransform>
+                            </Rectangle>
+                            <Rectangle Height="20"
                                        Margin="24,0,0,0"
                                        HorizontalAlignment="Left"
-                                       Style="{StaticResource MeterBarStyle}" />
-                            <Rectangle Height="8"
+                                       RenderTransformOrigin="0.5,1"
+                                       Style="{StaticResource AnalyzerBar4Style}">
+                                <Rectangle.RenderTransform>
+                                    <ScaleTransform ScaleY="0.7" />
+                                </Rectangle.RenderTransform>
+                            </Rectangle>
+                            <Rectangle Height="20"
                                        Margin="32,0,0,0"
                                        HorizontalAlignment="Left"
-                                       Style="{StaticResource MeterBarStyle}" />
+                                       RenderTransformOrigin="0.5,1"
+                                       Style="{StaticResource AnalyzerBar5Style}">
+                                <Rectangle.RenderTransform>
+                                    <ScaleTransform ScaleY="0.4" />
+                                </Rectangle.RenderTransform>
+                            </Rectangle>
                         </Grid>
 
                         <TextBlock Grid.Column="2"
@@ -748,11 +1399,16 @@
                                 </Style>
                             </Button.Style>
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Width="14"
-                                           VerticalAlignment="Center"
-                                           FontFamily="Segoe MDL2 Assets"
-                                           FontSize="12"
-                                           Text="&#xE753;" />
+                                <Viewbox Width="16" Height="17" VerticalAlignment="Center">
+                                    <Canvas Width="48" Height="49">
+                                        <Path Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                              Data="M18.63,37.418 8.985,24.518 18.577,11.985 16.725,9.458 5.917,23.595 5.902,25.403 16.762,39.945Z" />
+                                        <Path Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                              Data="M21.997,6.503 18.285,6.503 31.672,24.803 18.6,42.503 22.335,42.503 35.4,24.81Z" />
+                                        <Path Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                              Data="M29.175,6.503 25.417,6.503 39.015,24.585 25.417,42.503 29.182,42.503 42.09,25.493 42.09,23.685Z" />
+                                    </Canvas>
+                                </Viewbox>
                                 <TextBlock Margin="4,0,0,0"
                                            VerticalAlignment="Center"
                                            Text="{x:Static branding:BrandText.WorkerProviderLabel}" />
@@ -774,11 +1430,35 @@
                                 </Style>
                             </Button.Style>
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Width="14"
-                                           VerticalAlignment="Center"
-                                           FontFamily="Segoe MDL2 Assets"
-                                           FontSize="12"
-                                           Text="&#xEA80;" />
+                                <Grid Width="22" Height="16" VerticalAlignment="Center">
+                                    <Image Source="pack://application:,,,/Assets/Providers/Anthropic-Symbol-Ivory.png"
+                                           Stretch="Uniform"
+                                           RenderOptions.BitmapScalingMode="HighQuality">
+                                        <Image.Style>
+                                            <Style TargetType="Image">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsAnthropicProvider}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Image.Style>
+                                    </Image>
+                                    <Image Source="pack://application:,,,/Assets/Providers/Anthropic-Symbol-Slate.png"
+                                           Stretch="Uniform"
+                                           RenderOptions.BitmapScalingMode="HighQuality">
+                                        <Image.Style>
+                                            <Style TargetType="Image">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsAnthropicProvider}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Image.Style>
+                                    </Image>
+                                </Grid>
                                 <TextBlock Margin="4,0,0,0"
                                            VerticalAlignment="Center"
                                            Text="{x:Static branding:BrandText.AnthropicProviderLabel}" />
@@ -792,18 +1472,43 @@
                                         <DataTrigger Binding="{Binding IsOpenAIProvider}" Value="True">
                                             <Setter Property="Background" Value="{StaticResource StudioTealBrush}" />
                                             <Setter Property="BorderBrush" Value="{StaticResource StudioTealBrush}" />
+                                            <Setter Property="Foreground" Value="{StaticResource GraphiteBrush}" />
                                             <Setter Property="FontWeight" Value="SemiBold" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </Button.Style>
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Width="14"
-                                           VerticalAlignment="Center"
-                                           FontFamily="Segoe MDL2 Assets"
-                                           FontSize="12"
-                                           Text="&#xE909;" />
-                                <TextBlock Margin="4,0,0,0"
+                                <Grid Width="24" Height="24" VerticalAlignment="Center">
+                                    <Image Source="pack://application:,,,/Assets/Providers/OpenAI-Blossom-White.png"
+                                           Stretch="Uniform"
+                                           RenderOptions.BitmapScalingMode="HighQuality">
+                                        <Image.Style>
+                                            <Style TargetType="Image">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsOpenAIProvider}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Image.Style>
+                                    </Image>
+                                    <Image Source="pack://application:,,,/Assets/Providers/OpenAI-Blossom-Black.png"
+                                           Stretch="Uniform"
+                                           RenderOptions.BitmapScalingMode="HighQuality">
+                                        <Image.Style>
+                                            <Style TargetType="Image">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsOpenAIProvider}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Image.Style>
+                                    </Image>
+                                </Grid>
+                                <TextBlock Margin="2,0,0,0"
                                            VerticalAlignment="Center"
                                            Text="{x:Static branding:BrandText.OpenAIProviderLabel}" />
                             </StackPanel>
