@@ -70,6 +70,12 @@ public sealed class TutorInteractionServiceTests
         Assert.AreEqual(720, result.CaptureMetadata.EncodedPixelHeight);
         Assert.AreEqual(new DesktopPoint(1060, 740), result.MappedDesktopPoint);
         Assert.AreEqual("brush tool", result.TargetLabel);
+
+        var history = service.GetConversationHistorySnapshot();
+        Assert.HasCount(1, history);
+        Assert.AreEqual("Where do I start?", history[0].UserText);
+        Assert.AreEqual("Select the Brush tool.", history[0].AssistantText);
+        Assert.IsFalse(history[0].AssistantText.Contains("[POINT", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -130,6 +136,7 @@ public sealed class TutorInteractionServiceTests
 
         Assert.AreEqual(TutorInteractionOptions.DefaultModel, sentRequest?.Model);
         Assert.AreEqual(0, service.ConversationTurnCount);
+        Assert.HasCount(0, service.GetConversationHistorySnapshot());
     }
 
     [TestMethod]
@@ -157,11 +164,24 @@ public sealed class TutorInteractionServiceTests
         Assert.AreEqual("answer 2", requests[11].ConversationHistory[0].AssistantText);
         Assert.AreEqual("question 11", requests[11].ConversationHistory[9].UserText);
 
+        var cappedHistory = service.GetConversationHistorySnapshot();
+        Assert.HasCount(10, cappedHistory);
+        Assert.AreEqual("question 3", cappedHistory[0].UserText);
+        Assert.AreEqual("answer 3", cappedHistory[0].AssistantText);
+        Assert.AreEqual("question 12", cappedHistory[9].UserText);
+        Assert.AreEqual("answer 12", cappedHistory[9].AssistantText);
+        Assert.IsTrue(cappedHistory.All(
+            turn => !turn.AssistantText.Contains("[POINT", StringComparison.Ordinal)));
+
         service.ClearHistory();
+        Assert.HasCount(0, service.GetConversationHistorySnapshot());
         await service.RespondAsync("fresh question");
 
         Assert.HasCount(0, requests[12].ConversationHistory);
         Assert.AreEqual(1, service.ConversationTurnCount);
+        Assert.AreEqual(
+            "fresh question",
+            service.GetConversationHistorySnapshot().Single().UserText);
     }
 
     [TestMethod]
@@ -186,6 +206,7 @@ public sealed class TutorInteractionServiceTests
 
         Assert.AreEqual(0, workerCallCount);
         Assert.AreEqual(0, service.ConversationTurnCount);
+        Assert.HasCount(0, service.GetConversationHistorySnapshot());
     }
 
     [TestMethod]
@@ -215,6 +236,12 @@ public sealed class TutorInteractionServiceTests
         Assert.AreEqual("current question", requests[2].ConversationHistory[0].UserText);
         Assert.AreEqual("current answer", requests[2].ConversationHistory[0].AssistantText);
         Assert.AreEqual(2, service.ConversationTurnCount);
+
+        var history = service.GetConversationHistorySnapshot();
+        Assert.HasCount(2, history);
+        Assert.AreEqual("current question", history[0].UserText);
+        Assert.AreEqual("follow-up question", history[1].UserText);
+        Assert.IsFalse(history.Any(turn => turn.UserText == "stale question"));
 
         IAsyncEnumerable<string> HandleRequest(
             WorkerChatRequest request,

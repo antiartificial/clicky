@@ -85,6 +85,77 @@ public sealed class CompanionViewModelTests
     }
 
     [TestMethod]
+    public async Task SubmitQuestionAsync_ProjectsCompletedTurnWhileActiveQuestionIsTransient()
+    {
+        var responseStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseResponse = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, cancellationToken) => DelayedResponse(
+                responseStarted,
+                releaseResponse,
+                "Open the command palette. [POINT:200,100:command palette]",
+                cancellationToken)));
+
+        Assert.IsTrue(viewModel.IsConversationEmpty);
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "  How do I run a command?  ";
+        var submission = viewModel.SubmitQuestionAsync();
+        await responseStarted.Task;
+
+        Assert.IsTrue(viewModel.HasActiveQuestion);
+        Assert.AreEqual("How do I run a command?", viewModel.ActiveQuestionText);
+        Assert.HasCount(0, viewModel.ConversationTurns);
+        Assert.IsFalse(viewModel.IsConversationEmpty);
+
+        releaseResponse.SetResult();
+        await submission;
+
+        Assert.IsFalse(viewModel.HasActiveQuestion);
+        Assert.AreEqual(string.Empty, viewModel.ActiveQuestionText);
+        Assert.IsTrue(viewModel.HasConversation);
+        Assert.HasCount(1, viewModel.ConversationTurns);
+        Assert.AreEqual("How do I run a command?", viewModel.ConversationTurns[0].UserText);
+        Assert.AreEqual("Open the command palette.", viewModel.ConversationTurns[0].AssistantText);
+        Assert.IsFalse(viewModel.ConversationTurns[0].AssistantText.Contains(
+            "[POINT",
+            StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task CancelCurrentInteractionAsync_ClearsActiveQuestionWithoutCommittingTurn()
+    {
+        var responseStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseResponse = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (viewModel, interactionService) = CreateViewModelWithService(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, cancellationToken) => DelayedResponse(
+                responseStarted,
+                releaseResponse,
+                "This answer should be canceled. [POINT:none]",
+                cancellationToken)));
+
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "Cancel this question";
+        var submission = viewModel.SubmitQuestionAsync();
+        await responseStarted.Task;
+        Assert.AreEqual("Cancel this question", viewModel.ActiveQuestionText);
+
+        await viewModel.CancelCurrentInteractionAsync();
+        await submission;
+
+        Assert.IsFalse(viewModel.HasActiveQuestion);
+        Assert.HasCount(0, viewModel.ConversationTurns);
+        Assert.HasCount(0, interactionService.GetConversationHistorySnapshot());
+        Assert.IsTrue(viewModel.IsConversationEmpty);
+        Assert.AreEqual(CompanionSessionState.Idle, viewModel.State);
+    }
+
+    [TestMethod]
     public async Task NewInteractionNoPointAndCancel_HideExistingCue()
     {
         var responseNumber = 0;
@@ -151,17 +222,32 @@ public sealed class CompanionViewModelTests
     [TestMethod]
     public async Task WorkerConfigurationFailure_ShowsUsefulSettingsState()
     {
-        var viewModel = CreateViewModel(
+        var responseStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseResponse = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (viewModel, interactionService) = CreateViewModelWithService(
             new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
-            new FakeWorkerClient((_, _) => MissingWorkerUrl()));
+            new FakeWorkerClient((_, cancellationToken) => MissingWorkerUrl(
+                responseStarted,
+                releaseResponse,
+                cancellationToken)));
 
         await viewModel.BeginQuestionEntryAsync();
         viewModel.Question = "Help";
-        await viewModel.SubmitQuestionAsync();
+        var submission = viewModel.SubmitQuestionAsync();
+        await responseStarted.Task;
+        Assert.AreEqual("Help", viewModel.ActiveQuestionText);
+
+        releaseResponse.SetResult();
+        await submission;
 
         Assert.AreEqual(CompanionSessionState.Responding, viewModel.State);
         Assert.AreEqual(BrandText.WorkerSetupStatus, viewModel.StatusText);
         StringAssert.Contains(viewModel.ResponseText, "Worker URL");
+        Assert.IsFalse(viewModel.HasActiveQuestion);
+        Assert.HasCount(0, viewModel.ConversationTurns);
+        Assert.HasCount(0, interactionService.GetConversationHistorySnapshot());
     }
 
     [TestMethod]
@@ -218,6 +304,10 @@ public sealed class CompanionViewModelTests
     {
         var captureCount = 0;
         WorkerChatRequest? request = null;
+        var responseStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseResponse = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         var dictationTranscriber = new FakeDictationTranscriber(
             stop: (_) => Task.FromResult("  Where is the save button?  "));
         using var viewModel = CreateViewModel(
@@ -226,15 +316,27 @@ public sealed class CompanionViewModelTests
                 captureCount++;
                 return Task.FromResult(CreateCapture());
             }),
-            new FakeWorkerClient((sentRequest, _) =>
+            new FakeWorkerClient((sentRequest, cancellationToken) =>
             {
                 request = sentRequest;
-                return Stream("Use the toolbar save button. [POINT:320,180:save button]");
+                return DelayedResponse(
+                    responseStarted,
+                    releaseResponse,
+                    "Use the toolbar save button. [POINT:320,180:save button]",
+                    cancellationToken);
             }),
             dictationTranscriber: dictationTranscriber);
 
         await viewModel.BeginVoiceInteractionAsync();
-        await viewModel.CompleteVoiceInteractionAsync();
+        var completion = viewModel.CompleteVoiceInteractionAsync();
+        await responseStarted.Task;
+
+        Assert.AreEqual("Where is the save button?", viewModel.ActiveQuestionText);
+        Assert.IsTrue(viewModel.HasActiveQuestion);
+        Assert.HasCount(0, viewModel.ConversationTurns);
+
+        releaseResponse.SetResult();
+        await completion;
 
         Assert.AreEqual(1, captureCount);
         Assert.AreEqual(1, dictationTranscriber.StartCount);
@@ -242,6 +344,10 @@ public sealed class CompanionViewModelTests
         Assert.AreEqual("Where is the save button?", request?.UserPrompt);
         Assert.AreEqual(CompanionSessionState.Responding, viewModel.State);
         Assert.AreEqual("Use the toolbar save button.", viewModel.ResponseText);
+        Assert.IsFalse(viewModel.HasActiveQuestion);
+        Assert.HasCount(1, viewModel.ConversationTurns);
+        Assert.AreEqual("Where is the save button?", viewModel.ConversationTurns[0].UserText);
+        Assert.AreEqual("Use the toolbar save button.", viewModel.ConversationTurns[0].AssistantText);
     }
 
     [TestMethod]
@@ -351,22 +457,86 @@ public sealed class CompanionViewModelTests
         Assert.AreEqual(string.Empty, viewModel.ResponseText);
     }
 
+    [TestMethod]
+    public async Task ConversationTurns_RespectServiceTenTurnCap()
+    {
+        var (viewModel, interactionService) = CreateViewModelWithService(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((request, _) =>
+                Stream($"answer for {request.UserPrompt} [POINT:none]")));
+
+        for (var questionNumber = 1; questionNumber <= 12; questionNumber++)
+        {
+            await viewModel.BeginQuestionEntryAsync();
+            viewModel.Question = $"question {questionNumber}";
+            await viewModel.SubmitQuestionAsync();
+        }
+
+        var canonicalHistory = interactionService.GetConversationHistorySnapshot();
+        Assert.HasCount(10, canonicalHistory);
+        Assert.HasCount(10, viewModel.ConversationTurns);
+        CollectionAssert.AreEqual(canonicalHistory.ToArray(), viewModel.ConversationTurns.ToArray());
+        Assert.AreEqual("question 3", viewModel.ConversationTurns[0].UserText);
+        Assert.AreEqual("answer for question 3", viewModel.ConversationTurns[0].AssistantText);
+        Assert.AreEqual("question 12", viewModel.ConversationTurns[9].UserText);
+        Assert.AreEqual("answer for question 12", viewModel.ConversationTurns[9].AssistantText);
+    }
+
+    [TestMethod]
+    public async Task ClearConversationCommand_ClearsVisibleAndServiceHistory()
+    {
+        var (viewModel, interactionService) = CreateViewModelWithService(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) => Stream("A finished answer. [POINT:none]")));
+
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "A finished question";
+        await viewModel.SubmitQuestionAsync();
+        Assert.IsTrue(viewModel.ClearConversationCommand.CanExecute(null));
+        Assert.HasCount(1, viewModel.ConversationTurns);
+        Assert.HasCount(1, interactionService.GetConversationHistorySnapshot());
+
+        viewModel.ClearConversationCommand.Execute(null);
+
+        Assert.HasCount(0, viewModel.ConversationTurns);
+        Assert.HasCount(0, interactionService.GetConversationHistorySnapshot());
+        Assert.IsFalse(viewModel.HasConversation);
+        Assert.IsFalse(viewModel.HasActiveQuestion);
+        Assert.IsTrue(viewModel.IsConversationEmpty);
+        Assert.AreEqual(string.Empty, viewModel.ResponseText);
+        Assert.AreEqual(CompanionSessionState.Idle, viewModel.State);
+        Assert.IsFalse(viewModel.ClearConversationCommand.CanExecute(null));
+    }
+
     private static CompanionViewModel CreateViewModel(
         IActiveWindowCaptureService captureService,
         IWorkerClient workerClient,
         IPointCuePresenter? pointCuePresenter = null,
-        IDictationTranscriber? dictationTranscriber = null)
+        IDictationTranscriber? dictationTranscriber = null) =>
+        CreateViewModelWithService(
+            captureService,
+            workerClient,
+            pointCuePresenter,
+            dictationTranscriber).ViewModel;
+
+    private static (CompanionViewModel ViewModel, TutorInteractionService InteractionService)
+        CreateViewModelWithService(
+            IActiveWindowCaptureService captureService,
+            IWorkerClient workerClient,
+            IPointCuePresenter? pointCuePresenter = null,
+            IDictationTranscriber? dictationTranscriber = null)
     {
         var settings = new CompanionSettings();
         var coordinator = new CompanionSessionCoordinator();
         var interactionService = new TutorInteractionService(captureService, workerClient);
-        return new CompanionViewModel(
+        var viewModel = new CompanionViewModel(
             coordinator,
             settings,
             interactionService,
             pointCuePresenter ?? new FakePointCuePresenter(),
             new FakeProviderApiKeyStore(),
             dictationTranscriber);
+        return (viewModel, interactionService);
     }
 
     private static CaptureResult CreateCapture() =>
@@ -396,11 +566,24 @@ public sealed class CompanionViewModelTests
         yield return "old answer [POINT:100,75:old target]";
     }
 
-    private static async IAsyncEnumerable<string> MissingWorkerUrl(
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    private static async IAsyncEnumerable<string> DelayedResponse(
+        TaskCompletionSource started,
+        TaskCompletionSource release,
+        string response,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        await Task.Yield();
-        cancellationToken.ThrowIfCancellationRequested();
+        started.SetResult();
+        await release.Task.WaitAsync(cancellationToken);
+        yield return response;
+    }
+
+    private static async IAsyncEnumerable<string> MissingWorkerUrl(
+        TaskCompletionSource started,
+        TaskCompletionSource release,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        started.SetResult();
+        await release.Task.WaitAsync(cancellationToken);
         throw new WorkerConfigurationException(
             "Set your Worker URL in Clicky settings before asking a question.");
 #pragma warning disable CS0162

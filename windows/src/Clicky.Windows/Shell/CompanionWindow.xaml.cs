@@ -32,6 +32,7 @@ public partial class CompanionWindow : Window
         SyncWindowHeight();
         viewModel.QuestionEntryReady += HandleQuestionEntryReady;
         viewModel.CompactStateRequested += HandleCompactStateRequested;
+        viewModel.PropertyChanged += HandleViewModelPropertyChanged;
         SourceInitialized += HandleSourceInitialized;
         Closing += HandleClosing;
     }
@@ -42,7 +43,7 @@ public partial class CompanionWindow : Window
         PositionNearPrimaryWorkArea();
 
         Show();
-        ApplyNonActivatingStyle(shouldPreventActivation: !viewModel.IsSettingsVisible);
+        ApplyNonActivatingStyle(shouldPreventActivation: !IsInteractivePaneVisible);
     }
 
     public void ShowSettings()
@@ -59,6 +60,7 @@ public partial class CompanionWindow : Window
     {
         viewModel.CancelCurrentInteraction();
         viewModel.SetSettingsVisible(false);
+        viewModel.SetConversationVisible(false);
         SyncWindowHeight();
         Focusable = false;
         ApplyNonActivatingStyle(shouldPreventActivation: true);
@@ -81,6 +83,7 @@ public partial class CompanionWindow : Window
     {
         if (isPermanentCloseRequested)
         {
+            viewModel.PropertyChanged -= HandleViewModelPropertyChanged;
             return;
         }
 
@@ -114,6 +117,28 @@ public partial class CompanionWindow : Window
         if (shouldShowSettings)
         {
             Activate();
+        }
+        else if (!viewModel.IsQuestionEntryVisible && !viewModel.IsConversationVisible)
+        {
+            Focusable = false;
+        }
+    }
+
+    private void ConversationButton_Click(object sender, RoutedEventArgs routedEventArgs)
+    {
+        var shouldShowConversation = !viewModel.IsConversationVisible;
+        viewModel.SetConversationVisible(shouldShowConversation);
+        SyncWindowHeight();
+        PositionNearPrimaryWorkArea();
+        Focusable = shouldShowConversation;
+        ApplyNonActivatingStyle(shouldPreventActivation: !shouldShowConversation);
+
+        if (shouldShowConversation)
+        {
+            Activate();
+            _ = Dispatcher.BeginInvoke(
+                DispatcherPriority.Loaded,
+                ConversationScrollViewer.ScrollToEnd);
         }
         else if (!viewModel.IsQuestionEntryVisible)
         {
@@ -196,7 +221,7 @@ public partial class CompanionWindow : Window
 
     private void HandleCompactStateRequested(object? sender, EventArgs eventArgs)
     {
-        if (viewModel.IsSettingsVisible)
+        if (IsInteractivePaneVisible)
         {
             return;
         }
@@ -204,6 +229,23 @@ public partial class CompanionWindow : Window
         Keyboard.ClearFocus();
         Focusable = false;
         ApplyNonActivatingStyle(shouldPreventActivation: true);
+    }
+
+    private void HandleViewModelPropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs propertyChangedEventArgs)
+    {
+        if (!viewModel.IsConversationVisible ||
+            propertyChangedEventArgs.PropertyName is not (
+                nameof(CompanionViewModel.ConversationTurns) or
+                nameof(CompanionViewModel.ActiveQuestionText)))
+        {
+            return;
+        }
+
+        _ = Dispatcher.BeginInvoke(
+            DispatcherPriority.Loaded,
+            ConversationScrollViewer.ScrollToEnd);
     }
 
     private void PositionNearPrimaryWorkArea()
@@ -246,6 +288,9 @@ public partial class CompanionWindow : Window
     {
         Height = viewModel.WindowHeight;
     }
+
+    private bool IsInteractivePaneVisible =>
+        viewModel.IsSettingsVisible || viewModel.IsConversationVisible;
 
     private void ApplyNonActivatingStyle(bool shouldPreventActivation)
     {

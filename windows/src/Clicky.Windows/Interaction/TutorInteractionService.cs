@@ -48,6 +48,18 @@ public sealed class TutorInteractionService
         }
     }
 
+    public IReadOnlyList<TutorConversationTurn> GetConversationHistorySnapshot()
+    {
+        lock (historyLock)
+        {
+            return conversationHistory
+                .Select(turn => new TutorConversationTurn(
+                    turn.UserText,
+                    turn.AssistantText))
+                .ToArray();
+        }
+    }
+
     public async Task<TutorInteractionResult> RespondAsync(
         string userPrompt,
         CancellationToken cancellationToken = default)

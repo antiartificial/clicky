@@ -20,6 +20,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 {
     private const double CompactWindowHeight = 190;
     private const double SettingsWindowHeight = 536;
+    private const double ConversationWindowHeight = 520;
 
     private readonly CompanionSessionCoordinator sessionCoordinator;
     private readonly TutorInteractionService tutorInteractionService;
@@ -30,10 +31,14 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
     private CancellationTokenSource? interactionCancellationSource;
     private PreparedTutorInteraction? preparedInteraction;
+    private CompanionInteractionId? activeQuestionInteractionId;
     private bool isQuestionEntryVisible;
     private bool isSettingsVisible;
+    private bool isConversationVisible;
     private string question = string.Empty;
     private string responseText = string.Empty;
+    private string activeQuestionText = string.Empty;
+    private IReadOnlyList<TutorConversationTurn> conversationTurns = [];
     private string responseStatusText = BrandText.RespondingStatus;
     private TutorInteractionResult? lastInteractionResult;
     private bool isProviderOperationBusy;
@@ -84,6 +89,9 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         RemoveApiKeyCommand = new RelayCommand(
             () => _ = DeleteSelectedProviderApiKeyAndObserveAsync(),
             () => CanChangeProviderSettings() && IsDirectProvider && HasStoredApiKey);
+        ClearConversationCommand = new RelayCommand(
+            ClearConversation,
+            CanClearConversation);
 
         sessionCoordinator.StateChanged += HandleSessionStateChanged;
         Settings.PropertyChanged += HandleSettingsPropertyChanged;
@@ -98,6 +106,39 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
     public IReadOnlyList<PushToTalkKey> PushToTalkKeys { get; } =
         Enum.GetValues<PushToTalkKey>();
+
+    public IReadOnlyList<TutorConversationTurn> ConversationTurns
+    {
+        get => conversationTurns;
+        private set
+        {
+            if (SetProperty(ref conversationTurns, value))
+            {
+                OnPropertyChanged(nameof(HasConversation));
+                OnPropertyChanged(nameof(IsConversationEmpty));
+                ClearConversationCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string ActiveQuestionText
+    {
+        get => activeQuestionText;
+        private set
+        {
+            if (SetProperty(ref activeQuestionText, value))
+            {
+                OnPropertyChanged(nameof(HasActiveQuestion));
+                OnPropertyChanged(nameof(IsConversationEmpty));
+            }
+        }
+    }
+
+    public bool HasConversation => ConversationTurns.Count > 0;
+
+    public bool HasActiveQuestion => !string.IsNullOrWhiteSpace(ActiveQuestionText);
+
+    public bool IsConversationEmpty => !HasConversation && !HasActiveQuestion;
 
     public bool IsMotionEffectivelyEnabled => CompanionMotionPolicy.IsEnabled(Settings);
 
@@ -187,7 +228,23 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         }
     }
 
-    public double WindowHeight => IsSettingsVisible ? SettingsWindowHeight : CompactWindowHeight;
+    public bool IsConversationVisible
+    {
+        get => isConversationVisible;
+        private set
+        {
+            if (SetProperty(ref isConversationVisible, value))
+            {
+                OnPropertyChanged(nameof(WindowHeight));
+            }
+        }
+    }
+
+    public double WindowHeight => IsSettingsVisible
+        ? SettingsWindowHeight
+        : IsConversationVisible
+            ? ConversationWindowHeight
+            : CompactWindowHeight;
 
     public AiProviderKind SelectedProvider => Settings.SelectedProvider;
 
@@ -251,6 +308,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
     public RelayCommand RemoveApiKeyCommand { get; }
 
+    public RelayCommand ClearConversationCommand { get; }
+
     public void SetSettingsVisible(bool isVisible)
     {
         if (isVisible &&
@@ -264,6 +323,11 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             CancelCurrentInteraction();
         }
 
+        if (isVisible)
+        {
+            IsConversationVisible = false;
+        }
+
         IsSettingsVisible = isVisible;
         AdvanceSessionCommand.RaiseCanExecuteChanged();
         OnPropertyChanged(nameof(CanSaveApiKey));
@@ -273,6 +337,35 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         {
             _ = RefreshSelectedProviderKeyStatusAndObserveAsync();
         }
+    }
+
+    public void SetConversationVisible(bool isVisible)
+    {
+        if (isVisible && IsSettingsVisible)
+        {
+            SetSettingsVisible(false);
+        }
+
+        IsConversationVisible = isVisible;
+    }
+
+    public void ClearConversation()
+    {
+        if (!CanClearConversation())
+        {
+            return;
+        }
+
+        tutorInteractionService.ClearHistory();
+        RefreshConversationTurns();
+        ClearActiveQuestion();
+        ResponseText = string.Empty;
+        if (State == CompanionSessionState.Responding)
+        {
+            sessionCoordinator.ResetToIdle();
+        }
+
+        _ = HideCueAsync();
     }
 
     public async Task SelectProviderAsync(AiProviderKind provider)
@@ -292,6 +385,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         {
             await CancelCurrentInteractionAsync();
             tutorInteractionService.ClearHistory();
+            RefreshConversationTurns();
             Settings.SelectedProvider = provider;
             NotifyProviderChanged();
             await RefreshSelectedProviderKeyStatusCoreAsync();
@@ -384,6 +478,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         }
 
         CancelInteractionToken();
+        ClearActiveQuestion();
         Question = string.Empty;
         ResponseText = string.Empty;
         responseStatusText = BrandText.RespondingStatus;
@@ -439,6 +534,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             return;
         }
 
+        SetActiveQuestion(interactionId.Value, submittedQuestion);
+
         try
         {
             await RespondWithPreparedInteractionAsync(
@@ -465,6 +562,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         }
 
         CancelInteractionToken();
+        ClearActiveQuestion();
         Question = string.Empty;
         ResponseText = string.Empty;
         responseStatusText = BrandText.RespondingStatus;
@@ -530,6 +628,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         }
 
         preparedInteraction = null;
+        ClearActiveQuestion();
         IsQuestionEntryVisible = false;
         Question = string.Empty;
         ResponseText = string.Empty;
@@ -582,6 +681,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
                 return;
             }
 
+            SetActiveQuestion(interaction.InteractionId, transcript);
             await RespondWithPreparedInteractionAsync(
                 interaction.InteractionId,
                 preparation,
@@ -644,6 +744,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             }
 
             LastInteractionResult = result;
+            RefreshConversationTurns();
             await PresentResultCueIfCurrentAsync(interactionId, result);
             ShowResponse(interactionId, BrandText.RespondingStatus, result.SpokenText);
         }
@@ -676,6 +777,10 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
                 "Couldn't answer",
                 "The selected AI provider didn't answer. Check its settings and try again.");
         }
+        finally
+        {
+            ClearActiveQuestionIfCurrent(interactionId);
+        }
     }
 
     private void EnsureVoiceProcessing(CompanionInteractionId interactionId)
@@ -696,6 +801,10 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
     private bool CanChangeProviderSettings() =>
         IsSettingsVisible && State == CompanionSessionState.Idle && !IsProviderOperationBusy;
+
+    private bool CanClearConversation() =>
+        HasConversation &&
+        State is not CompanionSessionState.Listening and not CompanionSessionState.Processing;
 
     private async Task RefreshSelectedProviderKeyStatusCoreAsync()
     {
@@ -777,6 +886,31 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
     private bool IsCurrent(CompanionInteractionId interactionId) =>
         sessionCoordinator.CurrentInteractionId == interactionId;
+
+    private void SetActiveQuestion(
+        CompanionInteractionId interactionId,
+        string text)
+    {
+        activeQuestionInteractionId = interactionId;
+        ActiveQuestionText = text.Trim();
+    }
+
+    private void ClearActiveQuestionIfCurrent(CompanionInteractionId interactionId)
+    {
+        if (activeQuestionInteractionId == interactionId)
+        {
+            ClearActiveQuestion();
+        }
+    }
+
+    private void ClearActiveQuestion()
+    {
+        activeQuestionInteractionId = null;
+        ActiveQuestionText = string.Empty;
+    }
+
+    private void RefreshConversationTurns() =>
+        ConversationTurns = tutorInteractionService.GetConversationHistorySnapshot();
 
     private static (string Status, string Detail) DescribeAnthropicFailure(
         AnthropicProviderException exception)
@@ -866,6 +1000,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         }
 
         preparedInteraction = null;
+        ClearActiveQuestionIfCurrent(interactionId);
         IsQuestionEntryVisible = false;
         sessionCoordinator.ResetToIdle();
         CompactStateRequested?.Invoke(this, EventArgs.Empty);
@@ -962,6 +1097,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         AdvanceSessionCommand.RaiseCanExecuteChanged();
         SubmitQuestionCommand.RaiseCanExecuteChanged();
         CancelSessionCommand.RaiseCanExecuteChanged();
+        ClearConversationCommand.RaiseCanExecuteChanged();
         OnPropertyChanged(nameof(CanSaveApiKey));
         RaiseProviderCommandCanExecuteChanged();
     }

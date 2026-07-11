@@ -5,7 +5,7 @@
         xmlns:branding="clr-namespace:Clicky.Windows.Branding"
         xmlns:session="clr-namespace:Clicky.Windows.Session"
         Title="{x:Static branding:BrandText.CompanionWindowTitle}"
-        Width="344"
+        Width="380"
         Height="190"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -97,14 +97,6 @@
                                     Opacity="0" />
                         </Grid>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ButtonSurface"
-                                        Property="BorderBrush"
-                                        Value="{StaticResource StudioTealBrush}" />
-                                <Setter TargetName="InteractionOverlay"
-                                        Property="Opacity"
-                                        Value="0.08" />
-                            </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="InteractionOverlay" Property="Opacity" Value="0.18" />
                             </Trigger>
@@ -120,13 +112,14 @@
                                     <Condition Binding="{Binding DataContext.IsMotionEffectivelyEnabled, RelativeSource={RelativeSource TemplatedParent}}"
                                                Value="True" />
                                 </MultiDataTrigger.Conditions>
+                                <Setter TargetName="InteractionOverlay" Property="Opacity" Value="0.08" />
                                 <MultiDataTrigger.EnterActions>
                                     <BeginStoryboard>
                                         <Storyboard>
                                             <DoubleAnimation Storyboard.TargetName="HoverGlow"
                                                              Storyboard.TargetProperty="Opacity"
                                                              To="0.72"
-                                                             Duration="0:0:0.12">
+                                                             Duration="0:0:0.18">
                                                 <DoubleAnimation.EasingFunction>
                                                     <CubicEase EasingMode="EaseOut" />
                                                 </DoubleAnimation.EasingFunction>
@@ -134,7 +127,7 @@
                                             <DoubleAnimation Storyboard.TargetName="ChromeRoot"
                                                              Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
                                                              To="1.02"
-                                                             Duration="0:0:0.12">
+                                                             Duration="0:0:0.16">
                                                 <DoubleAnimation.EasingFunction>
                                                     <CubicEase EasingMode="EaseOut" />
                                                 </DoubleAnimation.EasingFunction>
@@ -142,7 +135,7 @@
                                             <DoubleAnimation Storyboard.TargetName="ChromeRoot"
                                                              Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
                                                              To="1.02"
-                                                             Duration="0:0:0.12">
+                                                             Duration="0:0:0.16">
                                                 <DoubleAnimation.EasingFunction>
                                                     <CubicEase EasingMode="EaseOut" />
                                                 </DoubleAnimation.EasingFunction>
@@ -156,7 +149,7 @@
                                             <DoubleAnimation Storyboard.TargetName="HoverGlow"
                                                              Storyboard.TargetProperty="Opacity"
                                                              To="0"
-                                                             Duration="0:0:0.14">
+                                                             Duration="0:0:0.22">
                                                 <DoubleAnimation.EasingFunction>
                                                     <CubicEase EasingMode="EaseOut" />
                                                 </DoubleAnimation.EasingFunction>
@@ -164,7 +157,7 @@
                                             <DoubleAnimation Storyboard.TargetName="ChromeRoot"
                                                              Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
                                                              To="1"
-                                                             Duration="0:0:0.14">
+                                                             Duration="0:0:0.18">
                                                 <DoubleAnimation.EasingFunction>
                                                     <CubicEase EasingMode="EaseOut" />
                                                 </DoubleAnimation.EasingFunction>
@@ -172,7 +165,7 @@
                                             <DoubleAnimation Storyboard.TargetName="ChromeRoot"
                                                              Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
                                                              To="1"
-                                                             Duration="0:0:0.14">
+                                                             Duration="0:0:0.18">
                                                 <DoubleAnimation.EasingFunction>
                                                     <CubicEase EasingMode="EaseOut" />
                                                 </DoubleAnimation.EasingFunction>
@@ -180,6 +173,20 @@
                                         </Storyboard>
                                     </BeginStoryboard>
                                 </MultiDataTrigger.ExitActions>
+                            </MultiDataTrigger>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource TemplatedParent}}"
+                                               Value="True" />
+                                    <Condition Binding="{Binding IsEnabled, RelativeSource={RelativeSource TemplatedParent}}"
+                                               Value="True" />
+                                    <Condition Binding="{Binding DataContext.IsMotionEffectivelyEnabled, RelativeSource={RelativeSource TemplatedParent}}"
+                                               Value="False" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter TargetName="ButtonSurface"
+                                        Property="BorderBrush"
+                                        Value="{StaticResource StudioTealBrush}" />
+                                <Setter TargetName="InteractionOverlay" Property="Opacity" Value="0.08" />
                             </MultiDataTrigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="ChromeRoot" Property="Opacity" Value="0.38" />
@@ -837,6 +844,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
@@ -873,6 +881,36 @@
 
                 <Button Grid.Column="1"
                         Margin="0,0,3,0"
+                        ToolTip="{x:Static branding:BrandText.ConversationTooltip}"
+                        AutomationProperties.Name="{x:Static branding:BrandText.ConversationTooltip}"
+                        Click="ConversationButton_Click">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource IconButtonStyle}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsConversationVisible}" Value="True">
+                                    <Setter Property="Background" Value="{StaticResource StudioTealBrush}" />
+                                    <Setter Property="BorderBrush" Value="{StaticResource StudioTealBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                    <Grid Width="16" Height="16">
+                        <TextBlock HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontFamily="Segoe MDL2 Assets"
+                                   FontSize="14"
+                                   Text="&#xE8BD;" />
+                        <Ellipse Width="4"
+                                 Height="4"
+                                 HorizontalAlignment="Right"
+                                 VerticalAlignment="Bottom"
+                                 Fill="{StaticResource SignalLimeBrush}"
+                                 Visibility="{Binding HasConversation, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </Grid>
+                </Button>
+
+                <Button Grid.Column="2"
+                        Margin="0,0,3,0"
                         Style="{StaticResource IconButtonStyle}"
                         ToolTip="{x:Static branding:BrandText.OpenSettingsTooltip}"
                         AutomationProperties.Name="{x:Static branding:BrandText.OpenSettingsTooltip}"
@@ -882,7 +920,7 @@
                                Text="&#xE713;" />
                 </Button>
 
-                <Button Grid.Column="2"
+                <Button Grid.Column="3"
                         Style="{StaticResource IconButtonStyle}"
                         ToolTip="{x:Static branding:BrandText.CloseTooltip}"
                         AutomationProperties.Name="{x:Static branding:BrandText.CloseTooltip}"
@@ -892,7 +930,7 @@
                                Text="&#xE711;" />
                 </Button>
 
-                <Border Grid.ColumnSpan="3"
+                <Border Grid.ColumnSpan="4"
                         VerticalAlignment="Bottom"
                         BorderBrush="{StaticResource GraphiteLineBrush}"
                         BorderThickness="0,0,0,1"
@@ -914,7 +952,7 @@
                     <ColumnDefinition Width="48" />
                     <ColumnDefinition Width="10" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="34" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <Button x:Name="PrimaryActionButton"
@@ -1298,10 +1336,18 @@
                         HorizontalAlignment="Right"
                         VerticalAlignment="Top"
                         Margin="0,14,0,0"
-                        Style="{StaticResource IconButtonStyle}"
                         Command="{Binding CancelSessionCommand}"
                         ToolTip="{x:Static branding:BrandText.CancelActionTooltip}"
                         AutomationProperties.Name="{x:Static branding:BrandText.CancelActionTooltip}">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource IconButtonStyle}">
+                            <Style.Triggers>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
                     <TextBlock FontFamily="Segoe MDL2 Assets"
                                FontSize="12"
                                Text="&#xE71A;" />
@@ -1357,8 +1403,146 @@
                     Padding="0,11,0,0"
                     BorderBrush="{StaticResource GraphiteLineBrush}"
                     BorderThickness="0,1,0,0"
+                    Visibility="{Binding IsConversationVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="30" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="4" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Rectangle Width="4"
+                                   Height="16"
+                                   VerticalAlignment="Center"
+                                   Fill="{StaticResource StudioTealBrush}"
+                                   RadiusX="2"
+                                   RadiusY="2" />
+                        <TextBlock Grid.Column="1"
+                                   Margin="8,0,0,0"
+                                   VerticalAlignment="Center"
+                                   Text="{x:Static branding:BrandText.ConversationHeading}"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource WarmWhiteBrush}" />
+                        <Button Grid.Column="2"
+                                Style="{StaticResource IconButtonStyle}"
+                                Command="{Binding ClearConversationCommand}"
+                                ToolTip="{x:Static branding:BrandText.ClearConversationTooltip}"
+                                AutomationProperties.Name="{x:Static branding:BrandText.ClearConversationTooltip}"
+                                Visibility="{Binding HasConversation, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock FontFamily="Segoe MDL2 Assets"
+                                       FontSize="13"
+                                       Text="&#xE74D;" />
+                        </Button>
+                    </Grid>
+
+                    <ScrollViewer x:Name="ConversationScrollViewer"
+                                  Grid.Row="1"
+                                  Height="300"
+                                  Margin="0,8,0,0"
+                                  VerticalAlignment="Top"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
+                        <Grid>
+                            <StackPanel>
+                                <ItemsControl ItemsSource="{Binding ConversationTurns}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,0,0,12">
+                                                <Border MaxWidth="300"
+                                                        Padding="9,7"
+                                                        HorizontalAlignment="Right"
+                                                        Background="{StaticResource StudioTealBrush}"
+                                                        BorderBrush="{StaticResource StudioTealBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="6">
+                                                    <StackPanel>
+                                                        <TextBlock Margin="0,0,0,3"
+                                                                   FontSize="10"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="{StaticResource GraphiteBrush}"
+                                                                   Opacity="0.7"
+                                                                   Text="You" />
+                                                        <TextBlock FontSize="12"
+                                                                   LineHeight="16"
+                                                                   TextWrapping="Wrap"
+                                                                   Foreground="{StaticResource GraphiteBrush}"
+                                                                   Text="{Binding UserText}" />
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border MaxWidth="300"
+                                                        Margin="0,7,0,0"
+                                                        Padding="9,7"
+                                                        HorizontalAlignment="Left"
+                                                        Background="{StaticResource GraphiteRaisedBrush}"
+                                                        BorderBrush="{StaticResource GraphiteLineBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="6">
+                                                    <StackPanel>
+                                                        <TextBlock Margin="0,0,0,3"
+                                                                   FontSize="10"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="{StaticResource SignalLimeBrush}"
+                                                                   Text="{x:Static branding:BrandText.ApplicationName}" />
+                                                        <TextBlock FontSize="12"
+                                                                   LineHeight="16"
+                                                                   TextWrapping="Wrap"
+                                                                   Foreground="{StaticResource WarmWhiteBrush}"
+                                                                   Text="{Binding AssistantText}" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Border MaxWidth="300"
+                                        Padding="9,7"
+                                        HorizontalAlignment="Right"
+                                        Background="{StaticResource StudioTealBrush}"
+                                        BorderBrush="{StaticResource StudioTealBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Visibility="{Binding HasActiveQuestion, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <StackPanel>
+                                        <TextBlock Margin="0,0,0,3"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource GraphiteBrush}"
+                                                   Opacity="0.7"
+                                                   Text="You" />
+                                        <TextBlock FontSize="12"
+                                                   LineHeight="16"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="{StaticResource GraphiteBrush}"
+                                                   Text="{Binding ActiveQuestionText}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <TextBlock HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       FontSize="12"
+                                       Foreground="{StaticResource WarmWhiteBrush}"
+                                       Opacity="0.48"
+                                       Text="{x:Static branding:BrandText.EmptyConversation}"
+                                       Visibility="{Binding IsConversationEmpty, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        </Grid>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="2"
+                    Padding="0,11,0,0"
+                    BorderBrush="{StaticResource GraphiteLineBrush}"
+                    BorderThickness="0,1,0,0"
                     Visibility="{Binding IsSettingsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <StackPanel Width="304">
+                <StackPanel>
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="4" />

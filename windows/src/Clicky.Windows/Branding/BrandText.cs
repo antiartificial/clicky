@@ -8,6 +8,10 @@ public static class BrandText
     public const string SettingsMenuItem = "Settings";
     public const string ExitMenuItem = "Quit Clicky";
     public const string SettingsHeading = "Settings";
+    public const string ConversationHeading = "Conversation";
+    public const string ConversationTooltip = "Conversation";
+    public const string ClearConversationTooltip = "Clear conversation";
+    public const string EmptyConversation = "No conversation yet.";
     public const string AiProviderLabel = "AI provider";
     public const string WorkerProviderLabel = "Worker";
     public const string AnthropicProviderLabel = "Anthropic";

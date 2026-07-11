@@ -25,6 +25,10 @@ public sealed class ProviderSettingsViewModelTests
         viewModel.Question = "first";
         await viewModel.SubmitQuestionAsync();
         Assert.AreEqual(1, interactionService.ConversationTurnCount);
+        Assert.HasCount(1, interactionService.GetConversationHistorySnapshot());
+        Assert.HasCount(1, viewModel.ConversationTurns);
+        Assert.AreEqual("first", viewModel.ConversationTurns[0].UserText);
+        Assert.AreEqual("Try this.", viewModel.ConversationTurns[0].AssistantText);
 
         await viewModel.BeginQuestionEntryAsync();
         Assert.IsTrue(viewModel.IsQuestionEntryVisible);
@@ -34,6 +38,10 @@ public sealed class ProviderSettingsViewModelTests
         Assert.AreEqual(CompanionSessionState.Idle, viewModel.State);
         Assert.IsFalse(viewModel.IsQuestionEntryVisible);
         Assert.AreEqual(0, interactionService.ConversationTurnCount);
+        Assert.HasCount(0, interactionService.GetConversationHistorySnapshot());
+        Assert.HasCount(0, viewModel.ConversationTurns);
+        Assert.IsFalse(viewModel.HasConversation);
+        Assert.IsTrue(viewModel.IsConversationEmpty);
     }
 
     [TestMethod]
@@ -94,6 +102,25 @@ public sealed class ProviderSettingsViewModelTests
         Assert.IsTrue(viewModel.IsSettingsVisible);
         Assert.AreEqual(CompanionSessionState.Idle, viewModel.State);
         Assert.IsFalse(viewModel.IsQuestionEntryVisible);
+    }
+
+    [TestMethod]
+    public void ConversationVisibility_ClosesSettingsAndRestoresAskCommand()
+    {
+        var (viewModel, _) = CreateViewModel(new FakeProviderApiKeyStore());
+
+        viewModel.SetSettingsVisible(true);
+        Assert.IsTrue(viewModel.IsSettingsVisible);
+        Assert.IsFalse(viewModel.AdvanceSessionCommand.CanExecute(null));
+
+        viewModel.SetConversationVisible(true);
+
+        Assert.IsFalse(viewModel.IsSettingsVisible);
+        Assert.IsTrue(viewModel.IsConversationVisible);
+        Assert.IsTrue(viewModel.AdvanceSessionCommand.CanExecute(null));
+
+        viewModel.SetConversationVisible(false);
+        Assert.IsFalse(viewModel.IsConversationVisible);
     }
 
     private static (CompanionViewModel ViewModel, TutorInteractionService InteractionService)
