@@ -9,7 +9,9 @@ public static class BrandText
     public const string ExitMenuItem = "Quit Clicky";
     public const string SettingsHeading = "Settings";
     public const string ConversationHeading = "Conversation";
-    public const string ConversationTooltip = "Conversation";
+    public const string ConversationTooltip = "Chats and history";
+    public const string ConversationButtonLabel = "Chats";
+    public const string StartTypedQuestionTooltip = "New typed question";
     public const string ClearConversationTooltip = "Start a new conversation";
     public const string ConversationHistoryLabel = "Past conversations";
     public const string EmptyConversation = "No conversation selected.";
@@ -32,6 +34,12 @@ public static class BrandText
     public const string ApiKeySaveFailed = "Could not save the key in Windows Credential Manager.";
     public const string ApiKeyRemoveFailed = "Could not remove the key from Windows Credential Manager.";
     public const string ApiKeyStatusFailed = "Could not read key status from Windows Credential Manager.";
+    public const string OpenAIConnectLabel = "Connect & test";
+    public const string OpenAIRetestLabel = "Test again";
+    public const string OpenAIConnecting = "Checking account access";
+    public const string OpenAIReady = "OpenAI ready";
+    public const string OpenAIAddKey = "Add a key to connect OpenAI";
+    public const string OpenAIModelRecommendation = "Recommended for visual guidance";
     public const string SpeechOutputLabel = "Read answers aloud";
     public const string SpeechProviderLabel = "Voice provider";
     public const string VoiceLabel = "Voice";
@@ -55,7 +63,7 @@ public static class BrandText
     public const string SubmitQuestionTooltip = "Send question";
     public const string OpenSettingsTooltip = "Open settings";
     public const string CloseTooltip = "Hide Clicky";
-    public const string PrimaryActionTooltip = "Capture the active app and ask";
+    public const string PrimaryActionTooltip = "Capture the active app and type a question";
     public const string CancelActionTooltip = "Cancel question";
     public const string EmptyDictationStatus = "Didn't catch that";
     public const string EmptyDictationDetail = "I didn't hear a question. Hold the pedal while you speak, then try again.";

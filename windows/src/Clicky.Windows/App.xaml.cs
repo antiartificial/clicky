@@ -27,6 +27,7 @@ public partial class App : System.Windows.Application
     private HttpClient? workerHttpClient;
     private AnthropicDirectApiClient? anthropicClient;
     private OpenAiResponsesClient? openAIClient;
+    private OpenAiOnboardingClient? openAIOnboardingClient;
     private GeminiDirectApiClient? geminiClient;
     private OpenAiSpeechClient? openAISpeechClient;
     private ElevenLabsSpeechClient? elevenLabsSpeechClient;
@@ -76,6 +77,7 @@ public partial class App : System.Windows.Application
         var workerClient = new SettingsAwareWorkerClient(workerHttpClient, settings);
         anthropicClient = AnthropicDirectApiClient.CreateProduction(apiKeyStore, settings);
         openAIClient = OpenAiResponsesClient.CreateProduction(apiKeyStore, settings);
+        openAIOnboardingClient = OpenAiOnboardingClient.CreateProduction(apiKeyStore);
         geminiClient = GeminiDirectApiClient.CreateProduction(apiKeyStore, settings);
         var providerClient = new ProviderRoutingChatClient(
             settings,
@@ -115,7 +117,9 @@ public partial class App : System.Windows.Application
             apiKeyStore,
             dictationTranscriber,
             textToSpeechClient,
-            audioPlaybackService);
+            audioPlaybackService,
+            openAIOnboardingClient,
+            settingsStore);
 
         companionWindow = new CompanionWindow(companionViewModel);
         trayIconHost = new TrayIconHost(
@@ -246,7 +250,19 @@ public partial class App : System.Windows.Application
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            companionWindow?.ShowNearPrimaryWorkArea();
+            if (settings?.SelectedProvider == AiProviderKind.OpenAI &&
+                (settings.OpenAIValidatedAtUtc is null ||
+                 !string.Equals(
+                     settings.OpenAIValidatedModelId,
+                     settings.OpenAIModelId,
+                     StringComparison.Ordinal)))
+            {
+                companionWindow?.ShowSettings();
+            }
+            else
+            {
+                companionWindow?.ShowNearPrimaryWorkArea();
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -333,6 +349,8 @@ public partial class App : System.Windows.Application
             anthropicClient = null;
             openAIClient?.Dispose();
             openAIClient = null;
+            openAIOnboardingClient?.Dispose();
+            openAIOnboardingClient = null;
             geminiClient?.Dispose();
             geminiClient = null;
             openAISpeechClient?.Dispose();

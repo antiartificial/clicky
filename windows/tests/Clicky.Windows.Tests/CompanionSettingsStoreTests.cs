@@ -29,6 +29,8 @@ public sealed class CompanionSettingsStoreTests
                 SpeechOutputEnabled = true,
                 TextToSpeechProvider = TextToSpeechProviderKind.ElevenLabs,
                 ElevenLabsVoiceId = "voice-test",
+                OpenAIValidatedModelId = "gpt-5.4-mini",
+                OpenAIValidatedAtUtc = new DateTimeOffset(2026, 7, 11, 18, 0, 0, TimeSpan.Zero),
             };
 
             await store.SaveAsync(settings);
@@ -42,6 +44,8 @@ public sealed class CompanionSettingsStoreTests
             Assert.IsTrue(loadedSettings.SpeechOutputEnabled);
             Assert.AreEqual(TextToSpeechProviderKind.ElevenLabs, loadedSettings.TextToSpeechProvider);
             Assert.AreEqual("voice-test", loadedSettings.ElevenLabsVoiceId);
+            Assert.AreEqual("gpt-5.4-mini", loadedSettings.OpenAIValidatedModelId);
+            Assert.AreEqual(settings.OpenAIValidatedAtUtc, loadedSettings.OpenAIValidatedAtUtc);
         }
         finally
         {

@@ -85,6 +85,79 @@ public sealed class ProviderSettingsViewModelTests
     }
 
     [TestMethod]
+    public async Task SaveOpenAIKey_DiscoversValidatesAndPersistsReadyState()
+    {
+        var temporaryDirectory = Path.Combine(Path.GetTempPath(), "ClickyOnboardingTests", Guid.NewGuid().ToString("N"));
+        var settingsPath = Path.Combine(temporaryDirectory, "settings.json");
+        try
+        {
+            var keyStore = new FakeProviderApiKeyStore();
+            var settings = new CompanionSettings();
+            var settingsStore = new CompanionSettingsStore(settingsPath);
+            var onboarding = new FakeOpenAiOnboardingClient((preferredModel, _) =>
+            {
+                Assert.IsNull(preferredModel);
+                return Task.FromResult(new OpenAiOnboardingResult(
+                    ["gpt-4.1-mini", "gpt-5.4-mini"],
+                    "gpt-5.4-mini",
+                    "gpt-5.4-mini",
+                    new DateTimeOffset(2026, 7, 11, 18, 0, 0, TimeSpan.Zero)));
+            });
+            var (viewModel, _) = CreateViewModel(keyStore, settings, onboarding, settingsStore);
+
+            await viewModel.SaveSelectedProviderApiKeyAsync("sk-test");
+
+            Assert.AreEqual(1, onboarding.Calls);
+            Assert.IsTrue(viewModel.HasStoredApiKey);
+            Assert.IsTrue(viewModel.HasDiscoveredOpenAIModels);
+            Assert.IsTrue(viewModel.IsOpenAIOnboarded);
+            Assert.AreEqual(BrandText.OpenAIReady, viewModel.OpenAIOnboardingStatusText);
+            Assert.AreEqual("gpt-5.4-mini", settings.OpenAIModelId);
+            CollectionAssert.AreEqual(
+                new[] { "gpt-4.1-mini", "gpt-5.4-mini" },
+                viewModel.AvailableOpenAIModels.ToArray());
+
+            var persisted = settingsStore.Load();
+            Assert.AreEqual("gpt-5.4-mini", persisted.OpenAIValidatedModelId);
+            Assert.AreEqual(settings.OpenAIValidatedAtUtc, persisted.OpenAIValidatedAtUtc);
+
+            settings.OpenAIModelId = "gpt-4.1-mini";
+            Assert.IsFalse(viewModel.IsOpenAIOnboarded);
+            Assert.AreEqual(string.Empty, settings.OpenAIValidatedModelId);
+            Assert.IsNull(settings.OpenAIValidatedAtUtc);
+            Assert.AreEqual("Model changed", viewModel.OpenAIOnboardingStatusText);
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryDirectory))
+            {
+                Directory.Delete(temporaryDirectory, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
+    public async Task SaveOpenAIKey_PermissionFailureDoesNotClaimReady()
+    {
+        var keyStore = new FakeProviderApiKeyStore();
+        var onboarding = new FakeOpenAiOnboardingClient((_, _) =>
+            Task.FromException<OpenAiOnboardingResult>(new OpenAiProviderException(
+                OpenAiProviderFailureKind.Permission,
+                "safe failure")));
+        var (viewModel, _) = CreateViewModel(
+            keyStore,
+            new CompanionSettings(),
+            onboarding);
+
+        await viewModel.SaveSelectedProviderApiKeyAsync("sk-test");
+
+        Assert.IsTrue(viewModel.HasStoredApiKey);
+        Assert.IsFalse(viewModel.IsOpenAIOnboarded);
+        Assert.AreEqual("Connection needs attention", viewModel.OpenAIOnboardingStatusText);
+        StringAssert.Contains(viewModel.OpenAIOnboardingDetailText, "Models read access");
+    }
+
+    [TestMethod]
     public async Task Settings_CanOpenAfterResponseButNotDuringActiveWork()
     {
         var (viewModel, _) = CreateViewModel(new FakeProviderApiKeyStore());
@@ -124,17 +197,23 @@ public sealed class ProviderSettingsViewModelTests
     }
 
     private static (CompanionViewModel ViewModel, TutorInteractionService InteractionService)
-        CreateViewModel(FakeProviderApiKeyStore keyStore)
+        CreateViewModel(
+            FakeProviderApiKeyStore keyStore,
+            CompanionSettings? settings = null,
+            IOpenAiOnboardingClient? openAiOnboardingClient = null,
+            CompanionSettingsStore? settingsStore = null)
     {
         var interactionService = new TutorInteractionService(
             new FakeCaptureService(),
             new FakeWorkerClient());
         var viewModel = new CompanionViewModel(
             new CompanionSessionCoordinator(),
-            new CompanionSettings(),
+            settings ?? new CompanionSettings(),
             interactionService,
             new FakePointCuePresenter(),
-            keyStore);
+            keyStore,
+            openAiOnboardingClient: openAiOnboardingClient,
+            settingsStore: settingsStore);
         return (viewModel, interactionService);
     }
 
@@ -172,6 +251,21 @@ public sealed class ProviderSettingsViewModelTests
             AiProviderKind provider,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(StoredProviders.Contains(provider));
+    }
+
+    private sealed class FakeOpenAiOnboardingClient(
+        Func<string?, CancellationToken, Task<OpenAiOnboardingResult>> run)
+        : IOpenAiOnboardingClient
+    {
+        public int Calls { get; private set; }
+
+        public Task<OpenAiOnboardingResult> DiscoverAndValidateAsync(
+            string? preferredModelId = null,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return run(preferredModelId, cancellationToken);
+        }
     }
 
     private sealed class FakeCaptureService : IActiveWindowCaptureService

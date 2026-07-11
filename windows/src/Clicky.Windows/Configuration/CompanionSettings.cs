@@ -19,6 +19,8 @@ public sealed class CompanionSettings : ObservableObject
     private AiProviderKind selectedProvider = AiProviderKind.OpenAI;
     private string anthropicModelId = DefaultAnthropicModelId;
     private string openAIModelId = DefaultOpenAIModelId;
+    private string openAIValidatedModelId = string.Empty;
+    private DateTimeOffset? openAIValidatedAtUtc;
     private string geminiModelId = DefaultGeminiModelId;
     private bool speechOutputEnabled;
     private TextToSpeechProviderKind textToSpeechProvider = TextToSpeechProviderKind.OpenAI;
@@ -104,6 +106,20 @@ public sealed class CompanionSettings : ObservableObject
     {
         get => retainCapturesLocally;
         set => SetProperty(ref retainCapturesLocally, value);
+    }
+
+    public string OpenAIValidatedModelId
+    {
+        get => openAIValidatedModelId;
+        set => SetProperty(
+            ref openAIValidatedModelId,
+            value ?? throw new ArgumentNullException(nameof(value)));
+    }
+
+    public DateTimeOffset? OpenAIValidatedAtUtc
+    {
+        get => openAIValidatedAtUtc;
+        set => SetProperty(ref openAIValidatedAtUtc, value);
     }
 
     public string GeminiModelId

@@ -96,7 +96,9 @@ public sealed class CompanionSettingsStore
         string? TextToSpeechProvider,
         string? OpenAITtsModelId,
         string? OpenAITtsVoice,
-        string? ElevenLabsVoiceId)
+        string? ElevenLabsVoiceId,
+        string? OpenAIValidatedModelId,
+        DateTimeOffset? OpenAIValidatedAtUtc)
     {
         public static PersistedSettings From(CompanionSettings settings) =>
             new(
@@ -117,7 +119,9 @@ public sealed class CompanionSettingsStore
                 settings.TextToSpeechProvider.ToString(),
                 settings.OpenAITtsModelId,
                 settings.OpenAITtsVoice,
-                settings.ElevenLabsVoiceId);
+                settings.ElevenLabsVoiceId,
+                settings.OpenAIValidatedModelId,
+                settings.OpenAIValidatedAtUtc);
 
         public void ApplyTo(CompanionSettings settings)
         {
@@ -156,6 +160,8 @@ public sealed class CompanionSettingsStore
             settings.OpenAITtsModelId = OpenAITtsModelId ?? CompanionSettings.DefaultOpenAITtsModelId;
             settings.OpenAITtsVoice = OpenAITtsVoice ?? CompanionSettings.DefaultOpenAITtsVoice;
             settings.ElevenLabsVoiceId = ElevenLabsVoiceId ?? string.Empty;
+            settings.OpenAIValidatedModelId = OpenAIValidatedModelId ?? string.Empty;
+            settings.OpenAIValidatedAtUtc = OpenAIValidatedAtUtc;
         }
     }
 }

@@ -208,6 +208,17 @@
             <Setter Property="Focusable" Value="False" />
         </Style>
 
+        <Style x:Key="HeaderTextButtonStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource PolishedButtonChromeStyle}">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="MinWidth" Value="58" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Focusable" Value="False" />
+        </Style>
+
         <Style x:Key="MeterBarStyle" TargetType="Rectangle">
             <Setter Property="Width" Value="4" />
             <Setter Property="RadiusX" Value="1.5" />
@@ -836,7 +847,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="32" />
                 <RowDefinition Height="90" />
-                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
             <Grid Grid.Row="0" MouseLeftButtonDown="Header_MouseLeftButtonDown">
@@ -885,7 +896,7 @@
                         AutomationProperties.Name="{x:Static branding:BrandText.ConversationTooltip}"
                         Click="ConversationButton_Click">
                     <Button.Style>
-                        <Style TargetType="Button" BasedOn="{StaticResource IconButtonStyle}">
+                        <Style TargetType="Button" BasedOn="{StaticResource HeaderTextButtonStyle}">
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsConversationVisible}" Value="True">
                                     <Setter Property="Background" Value="{StaticResource StudioTealBrush}" />
@@ -894,7 +905,8 @@
                             </Style.Triggers>
                         </Style>
                     </Button.Style>
-                    <Grid Width="16" Height="16">
+                    <StackPanel Orientation="Horizontal">
+                        <Grid Width="16" Height="16">
                         <TextBlock HorizontalAlignment="Center"
                                    VerticalAlignment="Center"
                                    FontFamily="Segoe MDL2 Assets"
@@ -906,7 +918,13 @@
                                  VerticalAlignment="Bottom"
                                  Fill="{StaticResource SignalLimeBrush}"
                                  Visibility="{Binding HasConversation, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                    </Grid>
+                        </Grid>
+                        <TextBlock Margin="5,0,0,0"
+                                   VerticalAlignment="Center"
+                                   FontSize="10"
+                                   FontWeight="SemiBold"
+                                   Text="{x:Static branding:BrandText.ConversationButtonLabel}" />
+                    </StackPanel>
                 </Button>
 
                 <Button Grid.Column="2"
@@ -1435,16 +1453,26 @@
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="{StaticResource WarmWhiteBrush}" />
-                        <Button Grid.Column="2"
-                                Style="{StaticResource IconButtonStyle}"
-                                Command="{Binding ClearConversationCommand}"
-                                ToolTip="{x:Static branding:BrandText.ClearConversationTooltip}"
-                                AutomationProperties.Name="{x:Static branding:BrandText.ClearConversationTooltip}"
-                                Visibility="{Binding HasConversation, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <TextBlock FontFamily="Segoe MDL2 Assets"
-                                       FontSize="13"
-                                       Text="&#xE74D;" />
-                        </Button>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                            <Button Style="{StaticResource IconButtonStyle}"
+                                    Command="{Binding AdvanceSessionCommand}"
+                                    ToolTip="{x:Static branding:BrandText.StartTypedQuestionTooltip}"
+                                    AutomationProperties.Name="{x:Static branding:BrandText.StartTypedQuestionTooltip}">
+                                <TextBlock FontFamily="Segoe MDL2 Assets"
+                                           FontSize="13"
+                                           Text="&#xE710;" />
+                            </Button>
+                            <Button Margin="3,0,0,0"
+                                    Style="{StaticResource IconButtonStyle}"
+                                    Command="{Binding ClearConversationCommand}"
+                                    ToolTip="{x:Static branding:BrandText.ClearConversationTooltip}"
+                                    AutomationProperties.Name="{x:Static branding:BrandText.ClearConversationTooltip}"
+                                    Visibility="{Binding HasConversation, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock FontFamily="Segoe MDL2 Assets"
+                                           FontSize="13"
+                                           Text="&#xE74D;" />
+                            </Button>
+                        </StackPanel>
                     </Grid>
 
                     <ListBox Grid.Row="1"
@@ -1621,7 +1649,9 @@
                     BorderBrush="{StaticResource GraphiteLineBrush}"
                     BorderThickness="0,1,0,0"
                     Visibility="{Binding IsSettingsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <StackPanel>
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="0,0,6,0">
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="4" />
@@ -1809,10 +1839,21 @@
                                    FontSize="11"
                                    Foreground="{StaticResource WarmWhiteBrush}"
                                    Opacity="0.62" />
-                        <TextBox Margin="0,0,0,8"
-                                 Style="{StaticResource SettingsTextBoxStyle}"
-                                 AutomationProperties.Name="OpenAI model ID"
-                                 Text="{Binding Settings.OpenAIModelId, UpdateSourceTrigger=LostFocus}" />
+                        <ComboBox Height="30"
+                                  Margin="0,0,0,8"
+                                  Padding="8,3"
+                                  Background="{StaticResource GraphiteRaisedBrush}"
+                                  BorderBrush="{StaticResource GraphiteLineBrush}"
+                                  Foreground="{StaticResource WarmWhiteBrush}"
+                                  IsEditable="True"
+                                  IsTextSearchEnabled="True"
+                                  ItemsSource="{Binding AvailableOpenAIModels}"
+                                  Text="{Binding Settings.OpenAIModelId, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                  AutomationProperties.Name="OpenAI model" />
+                        <TextBlock Margin="1,-3,0,8"
+                                   FontSize="9"
+                                   Foreground="{StaticResource StudioTealBrush}"
+                                   Text="{Binding OpenAIModelRecommendationText}" />
                     </StackPanel>
 
                     <StackPanel Visibility="{Binding IsDirectProvider, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -1884,6 +1925,100 @@
                                        Text="{Binding ApiKeyStatusText}" />
                         </Grid>
                     </StackPanel>
+
+                    <Border Margin="0,0,0,10"
+                            Padding="10,9"
+                            Background="{StaticResource GraphiteRaisedBrush}"
+                            BorderBrush="{StaticResource GraphiteLineBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Visibility="{Binding IsOpenAIProvider, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="7" Height="7" VerticalAlignment="Center">
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse">
+                                                <Setter Property="Fill" Value="{StaticResource GraphiteLineBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasStoredApiKey}" Value="True">
+                                                        <Setter Property="Fill" Value="{StaticResource SignalLimeBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
+                                    <TextBlock Margin="5,0,0,0" FontSize="9" Foreground="{StaticResource WarmWhiteBrush}" Opacity="0.7" Text="Key" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="11,0,0,0" Orientation="Horizontal">
+                                    <Ellipse Width="7" Height="7" VerticalAlignment="Center">
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse">
+                                                <Setter Property="Fill" Value="{StaticResource GraphiteLineBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasDiscoveredOpenAIModels}" Value="True">
+                                                        <Setter Property="Fill" Value="{StaticResource StudioTealBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
+                                    <TextBlock Margin="5,0,0,0" FontSize="9" Foreground="{StaticResource WarmWhiteBrush}" Opacity="0.7" Text="Models" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Margin="11,0,0,0" Orientation="Horizontal">
+                                    <Ellipse Width="7" Height="7" VerticalAlignment="Center">
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse">
+                                                <Setter Property="Fill" Value="{StaticResource GraphiteLineBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsOpenAIOnboarded}" Value="True">
+                                                        <Setter Property="Fill" Value="{StaticResource CoralBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
+                                    <TextBlock Margin="5,0,0,0" FontSize="9" Foreground="{StaticResource WarmWhiteBrush}" Opacity="0.7" Text="Vision" />
+                                </StackPanel>
+                                <Button Grid.Column="4"
+                                        MinWidth="74"
+                                        Height="25"
+                                        Padding="8,0"
+                                        Style="{StaticResource SettingsActionButtonStyle}"
+                                        Command="{Binding TestOpenAIConnectionCommand}"
+                                        Content="{x:Static branding:BrandText.OpenAIRetestLabel}" />
+                            </Grid>
+                            <Grid Grid.Row="1" Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource WarmWhiteBrush}"
+                                           Text="{Binding OpenAIOnboardingStatusText}" />
+                                <TextBlock Grid.Column="1"
+                                           Margin="10,0,0,0"
+                                           TextAlignment="Right"
+                                           TextTrimming="CharacterEllipsis"
+                                           FontSize="10"
+                                           Foreground="{StaticResource WarmWhiteBrush}"
+                                           Opacity="0.6"
+                                           Text="{Binding OpenAIOnboardingDetailText}" />
+                            </Grid>
+                        </Grid>
+                    </Border>
 
                     <StackPanel Visibility="{Binding IsGeminiProvider, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <TextBlock Text="{x:Static branding:BrandText.ModelIdLabel}"
@@ -2178,6 +2313,7 @@
                         </Grid>
                     </Border>
                 </StackPanel>
+                </ScrollViewer>
             </Border>
         </Grid>
     </Border>

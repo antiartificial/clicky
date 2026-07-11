@@ -19,6 +19,7 @@ For the component-level design, see [ARCHITECTURE.md](ARCHITECTURE.md).
 - Terminal `POINT` parsing, capture-pixel to physical-desktop coordinate mapping, and a labeled, click-through, non-activating topmost cue overlay. Cue motion is on by default and runs only when both Clicky's motion toggle and the Windows reduced-motion preference allow it. The real mouse pointer is never moved.
 - Active provider context remains capped at 10 turns. Successful turns are also written to `%LocalAppData%\Clicky\clicky.db`; screenshots and secrets are never stored there.
 - The conversation pane lists past conversations newest-first with a generated title and rolling answer summary, and opens their complete typed-and-voice transcripts. Starting a new conversation resets only active context and preserves prior sessions.
+- Guided OpenAI onboarding stores the key, retrieves account-visible models, recommends a visual-tutoring model, verifies image Responses access, and persists the successful model and validation time.
 - Optional OpenAI text-to-speech reads completed answers using the stored OpenAI key. ElevenLabs is available as an optional direct BYOK custom-voice provider with its own Credential Manager entry and voice ID. Playback is serialized, cancellable, and never required for the text answer to succeed.
 - Non-secret settings persist atomically in `%LocalAppData%\Clicky\settings.json`.
 - Embedded `Clicky.png` and `Clicky.ico` assets used by the companion, startup splash, tray icon, and executable.
@@ -59,10 +60,13 @@ For direct OpenAI, Anthropic, or Gemini access:
 1. Obtain the key from your own provider account.
 2. Open Clicky Settings and select `OpenAI`, `Anthropic`, or `Gemini`.
 3. Confirm the Model ID. The defaults are `gpt-5.4-mini`, `claude-sonnet-4-6`, and `gemini-3.5-flash`.
-4. Paste the key into the masked `API key` field and click `Save key`.
-5. Confirm that the status reads `Stored on this PC`. The entry field is cleared after the save attempt.
+4. Paste the key into the masked `API key` field and click `Connect & test`.
+5. Clicky stores the key, retrieves the models visible to that OpenAI project, recommends a compatible visual-tutoring model, and runs one small image Responses request.
+6. Confirm that the Key, Models, and Vision indicators are complete and the status reads `OpenAI ready`.
 
-To rotate a key, enter the replacement and click `Replace key`. To delete it, click `Remove key`. Clicky does not reveal a saved key and does not test it automatically when saving; the first real request is the provider validation point.
+To rotate an OpenAI key, enter the replacement and click `Connect & test`. `Test again` rechecks the stored key and currently selected model without replacing the credential. To delete it, click `Remove key`. Clicky never reveals a saved key.
+
+OpenAI onboarding calls `GET /v1/models`, filters the returned IDs to likely Responses-and-image-capable tutoring families, and currently prefers `gpt-5.4-mini` when the account exposes it. Because the model-list response does not advertise endpoint or image capabilities, Clicky treats the small image Responses request as the authoritative compatibility check. A restricted OpenAI key needs read access for Models and write access for Responses; the project must also have API billing or credits and allow the selected model. Validation metadata is non-secret and persists in `settings.json`; changing the model or removing the key invalidates the Ready state. On startup, an unvalidated OpenAI setup opens directly to Settings.
 
 Never paste an API key into a Clicky question, chat message, issue, source file, command line, screenshot, or Worker URL. Use only the masked key field in Settings. Clicky sends the selected direct-provider key in that provider's authentication header, never in the request body.
 
@@ -147,7 +151,7 @@ This checkout also supports a repository-local SDK at `.dotnet`:
 .\.dotnet\dotnet.exe run --project .\windows\src\Clicky.Windows\Clicky.Windows.csproj
 ```
 
-The automated suite uses fake key stores and local HTTP/SSE fixtures. It does not read real Windows credentials or call a live Cloudflare Worker, Anthropic, OpenAI, Gemini, or ElevenLabs API by default. `clicky.bat doctor` is the deliberate exception: it reads the stored OpenAI credential and makes one small, billable text-only request asking for `OK`. It sends no screenshot or conversation history and reports only a sanitized failure category, provider code, and request ID.
+The automated suite uses fake key stores and local HTTP/SSE fixtures. It does not read real Windows credentials or call a live Cloudflare Worker, Anthropic, OpenAI, Gemini, or ElevenLabs API by default. `clicky.bat doctor` is the deliberate exception: it reads the stored OpenAI credential and makes one small, billable text-only request asking for `OK`. It sends no screenshot or conversation history and reports only a sanitized failure category, provider code, and request ID. The in-app onboarding check is stronger for Clicky's purpose because it also validates a tiny image input.
 
 ## Current limitations
 

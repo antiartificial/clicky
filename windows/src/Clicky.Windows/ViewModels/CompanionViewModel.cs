@@ -28,12 +28,15 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     private readonly TutorInteractionService tutorInteractionService;
     private readonly IPointCuePresenter pointCuePresenter;
     private readonly IProviderApiKeyStore apiKeyStore;
+    private readonly IOpenAiOnboardingClient? openAiOnboardingClient;
+    private readonly CompanionSettingsStore? settingsStore;
     private readonly IDictationTranscriber? dictationTranscriber;
     private readonly ITextToSpeechClient? textToSpeechClient;
     private readonly IAudioPlaybackService? audioPlaybackService;
     private readonly SemaphoreSlim cueGate = new(1, 1);
 
     private CancellationTokenSource? interactionCancellationSource;
+    private CancellationTokenSource? openAIOnboardingCancellationSource;
     private PreparedTutorInteraction? preparedInteraction;
     private CompanionInteractionId? activeQuestionInteractionId;
     private bool isQuestionEntryVisible;
@@ -50,6 +53,11 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     private bool isProviderOperationBusy;
     private bool hasStoredApiKey;
     private string apiKeyStatusText = BrandText.ApiKeyNotStored;
+    private IReadOnlyList<string> availableOpenAIModels = [CompanionSettings.DefaultOpenAIModelId];
+    private string openAIOnboardingStatusText = BrandText.OpenAIAddKey;
+    private string openAIOnboardingDetailText = "Not connected";
+    private string openAIModelRecommendationText = string.Empty;
+    private bool hasDiscoveredOpenAIModels;
     private bool hasStoredElevenLabsApiKey;
     private string elevenLabsApiKeyStatusText = BrandText.ApiKeyNotStored;
     private VoiceInteraction? voiceInteraction;
@@ -64,7 +72,9 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         IProviderApiKeyStore apiKeyStore,
         IDictationTranscriber? dictationTranscriber = null,
         ITextToSpeechClient? textToSpeechClient = null,
-        IAudioPlaybackService? audioPlaybackService = null)
+        IAudioPlaybackService? audioPlaybackService = null,
+        IOpenAiOnboardingClient? openAiOnboardingClient = null,
+        CompanionSettingsStore? settingsStore = null)
     {
         ArgumentNullException.ThrowIfNull(sessionCoordinator);
         ArgumentNullException.ThrowIfNull(settings);
@@ -76,6 +86,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         this.tutorInteractionService = tutorInteractionService;
         this.pointCuePresenter = pointCuePresenter;
         this.apiKeyStore = apiKeyStore;
+        this.openAiOnboardingClient = openAiOnboardingClient;
+        this.settingsStore = settingsStore;
         this.dictationTranscriber = dictationTranscriber;
         this.textToSpeechClient = textToSpeechClient;
         this.audioPlaybackService = audioPlaybackService;
@@ -105,6 +117,9 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         RemoveApiKeyCommand = new RelayCommand(
             () => _ = DeleteSelectedProviderApiKeyAndObserveAsync(),
             () => CanChangeProviderSettings() && IsDirectProvider && HasStoredApiKey);
+        TestOpenAIConnectionCommand = new RelayCommand(
+            () => _ = TestOpenAIConnectionAndObserveAsync(),
+            CanTestOpenAIConnection);
         ClearConversationCommand = new RelayCommand(
             ClearConversation,
             CanClearConversation);
@@ -316,6 +331,44 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     public bool IsOpenAISpeechProvider =>
         Settings.TextToSpeechProvider == TextToSpeechProviderKind.OpenAI;
 
+    public IReadOnlyList<string> AvailableOpenAIModels
+    {
+        get => availableOpenAIModels;
+        private set => SetProperty(ref availableOpenAIModels, value);
+    }
+
+    public bool HasDiscoveredOpenAIModels
+    {
+        get => hasDiscoveredOpenAIModels;
+        private set => SetProperty(ref hasDiscoveredOpenAIModels, value);
+    }
+
+    public bool IsOpenAIOnboarded =>
+        HasStoredApiKey &&
+        Settings.OpenAIValidatedAtUtc is not null &&
+        string.Equals(
+            Settings.OpenAIValidatedModelId,
+            Settings.OpenAIModelId,
+            StringComparison.Ordinal);
+
+    public string OpenAIOnboardingStatusText
+    {
+        get => openAIOnboardingStatusText;
+        private set => SetProperty(ref openAIOnboardingStatusText, value);
+    }
+
+    public string OpenAIOnboardingDetailText
+    {
+        get => openAIOnboardingDetailText;
+        private set => SetProperty(ref openAIOnboardingDetailText, value);
+    }
+
+    public string OpenAIModelRecommendationText
+    {
+        get => openAIModelRecommendationText;
+        private set => SetProperty(ref openAIModelRecommendationText, value);
+    }
+
     public bool IsProviderOperationBusy
     {
         get => isProviderOperationBusy;
@@ -325,6 +378,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             {
                 OnPropertyChanged(nameof(CanSaveApiKey));
                 OnPropertyChanged(nameof(CanSaveElevenLabsApiKey));
+                TestOpenAIConnectionCommand.RaiseCanExecuteChanged();
                 RaiseProviderCommandCanExecuteChanged();
             }
         }
@@ -338,6 +392,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             if (SetProperty(ref hasStoredApiKey, value))
             {
                 OnPropertyChanged(nameof(SaveApiKeyButtonText));
+                OnPropertyChanged(nameof(IsOpenAIOnboarded));
+                TestOpenAIConnectionCommand.RaiseCanExecuteChanged();
                 RemoveApiKeyCommand.RaiseCanExecuteChanged();
             }
         }
@@ -349,9 +405,11 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref apiKeyStatusText, value);
     }
 
-    public string SaveApiKeyButtonText => HasStoredApiKey
-        ? BrandText.ReplaceApiKeyLabel
-        : BrandText.SaveApiKeyLabel;
+    public string SaveApiKeyButtonText => IsOpenAIProvider
+        ? BrandText.OpenAIConnectLabel
+        : HasStoredApiKey
+            ? BrandText.ReplaceApiKeyLabel
+            : BrandText.SaveApiKeyLabel;
 
     public bool HasStoredElevenLabsApiKey
     {
@@ -381,6 +439,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
     public RelayCommand RemoveApiKeyCommand { get; }
 
+    public RelayCommand TestOpenAIConnectionCommand { get; }
+
     public RelayCommand ClearConversationCommand { get; }
 
     public void SetSettingsVisible(bool isVisible)
@@ -399,6 +459,10 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         if (isVisible)
         {
             IsConversationVisible = false;
+        }
+        else
+        {
+            CancelOpenAIOnboarding();
         }
 
         IsSettingsVisible = isVisible;
@@ -569,6 +633,10 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             await apiKeyStore.SaveApiKeyAsync(SelectedProvider, apiKey);
             HasStoredApiKey = true;
             ApiKeyStatusText = BrandText.ApiKeyStored;
+            if (IsOpenAIProvider && openAiOnboardingClient is not null)
+            {
+                await RunOpenAIOnboardingCoreAsync(preferredModelId: null);
+            }
         }
         catch
         {
@@ -594,6 +662,10 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             await apiKeyStore.DeleteApiKeyAsync(SelectedProvider);
             HasStoredApiKey = false;
             ApiKeyStatusText = BrandText.ApiKeyNotStored;
+            if (IsOpenAIProvider)
+            {
+                ClearOpenAIOnboardingState();
+            }
         }
         catch
         {
@@ -687,6 +759,24 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
                 interactionCancellationSource = null;
                 cancellationSource.Dispose();
             }
+        }
+    }
+
+    public async Task TestOpenAIConnectionAsync()
+    {
+        if (!CanTestOpenAIConnection())
+        {
+            return;
+        }
+
+        IsProviderOperationBusy = true;
+        try
+        {
+            await RunOpenAIOnboardingCoreAsync(Settings.OpenAIModelId);
+        }
+        finally
+        {
+            IsProviderOperationBusy = false;
         }
     }
 
@@ -787,6 +877,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         SystemParameters.StaticPropertyChanged -= HandleSystemParametersPropertyChanged;
         voiceInteraction?.ReleaseSignal.TrySetCanceled();
         CancelSpeechOutput();
+        CancelOpenAIOnboarding();
         voiceInteraction = null;
         var cancellationSource = interactionCancellationSource;
         interactionCancellationSource = null;
@@ -1024,6 +1115,12 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     private bool CanChangeProviderSettings() =>
         IsSettingsVisible && State == CompanionSessionState.Idle && !IsProviderOperationBusy;
 
+    private bool CanTestOpenAIConnection() =>
+        CanChangeProviderSettings() &&
+        IsOpenAIProvider &&
+        HasStoredApiKey &&
+        openAiOnboardingClient is not null;
+
     private bool CanClearConversation() =>
         HasConversation &&
         State is not CompanionSessionState.Listening and not CompanionSessionState.Processing;
@@ -1043,6 +1140,10 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             ApiKeyStatusText = HasStoredApiKey
                 ? BrandText.ApiKeyStored
                 : BrandText.ApiKeyNotStored;
+            if (IsOpenAIProvider)
+            {
+                RefreshOpenAIOnboardingPresentation();
+            }
         }
         catch
         {
@@ -1060,6 +1161,9 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsGeminiProvider));
         OnPropertyChanged(nameof(IsDirectProvider));
         OnPropertyChanged(nameof(CanSaveApiKey));
+        OnPropertyChanged(nameof(SaveApiKeyButtonText));
+        OnPropertyChanged(nameof(IsOpenAIOnboarded));
+        TestOpenAIConnectionCommand.RaiseCanExecuteChanged();
         RaiseProviderCommandCanExecuteChanged();
     }
 
@@ -1070,6 +1174,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         SelectOpenAIProviderCommand.RaiseCanExecuteChanged();
         SelectGeminiProviderCommand.RaiseCanExecuteChanged();
         RemoveApiKeyCommand.RaiseCanExecuteChanged();
+        TestOpenAIConnectionCommand.RaiseCanExecuteChanged();
     }
 
     private async Task SelectProviderAndObserveAsync(AiProviderKind provider)
@@ -1106,6 +1211,163 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         {
             ApiKeyStatusText = BrandText.ApiKeyRemoveFailed;
         }
+    }
+
+    private async Task TestOpenAIConnectionAndObserveAsync()
+    {
+        try
+        {
+            await TestOpenAIConnectionAsync();
+        }
+        catch
+        {
+            OpenAIOnboardingStatusText = "Connection needs attention";
+            OpenAIOnboardingDetailText = "Clicky could not complete the OpenAI check.";
+        }
+    }
+
+    private async Task RunOpenAIOnboardingCoreAsync(string? preferredModelId)
+    {
+        if (openAiOnboardingClient is null)
+        {
+            return;
+        }
+
+        CancelOpenAIOnboarding();
+        var cancellationSource = new CancellationTokenSource();
+        openAIOnboardingCancellationSource = cancellationSource;
+
+        OpenAIOnboardingStatusText = BrandText.OpenAIConnecting;
+        OpenAIOnboardingDetailText = "Retrieving compatible models";
+        HasDiscoveredOpenAIModels = false;
+        Settings.OpenAIValidatedModelId = string.Empty;
+        Settings.OpenAIValidatedAtUtc = null;
+        OnPropertyChanged(nameof(IsOpenAIOnboarded));
+
+        try
+        {
+            var result = await openAiOnboardingClient.DiscoverAndValidateAsync(
+                preferredModelId,
+                cancellationSource.Token);
+            if (!ReferenceEquals(openAIOnboardingCancellationSource, cancellationSource))
+            {
+                return;
+            }
+
+            AvailableOpenAIModels = result.Models;
+            HasDiscoveredOpenAIModels = result.Models.Count > 0;
+            OpenAIModelRecommendationText =
+                $"{BrandText.OpenAIModelRecommendation}: {result.RecommendedModelId}";
+            Settings.OpenAIModelId = result.ValidatedModelId;
+            Settings.OpenAIValidatedModelId = result.ValidatedModelId;
+            Settings.OpenAIValidatedAtUtc = result.ValidatedAtUtc;
+            if (settingsStore is not null)
+            {
+                await settingsStore.SaveAsync(Settings, cancellationSource.Token);
+            }
+
+            OpenAIOnboardingStatusText = BrandText.OpenAIReady;
+            OpenAIOnboardingDetailText =
+                $"{result.ValidatedModelId}  |  {result.Models.Count} compatible models";
+            OnPropertyChanged(nameof(IsOpenAIOnboarded));
+        }
+        catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
+        {
+        }
+        catch (OpenAiProviderException exception)
+        {
+            OpenAIOnboardingStatusText = "Connection needs attention";
+            OpenAIOnboardingDetailText = DescribeOpenAIOnboardingFailure(exception);
+        }
+        catch
+        {
+            OpenAIOnboardingStatusText = "Connection needs attention";
+            OpenAIOnboardingDetailText = "Clicky could not complete the OpenAI check.";
+        }
+        finally
+        {
+            if (ReferenceEquals(openAIOnboardingCancellationSource, cancellationSource))
+            {
+                openAIOnboardingCancellationSource = null;
+            }
+
+            cancellationSource.Dispose();
+        }
+    }
+
+    private void CancelOpenAIOnboarding()
+    {
+        var cancellationSource = openAIOnboardingCancellationSource;
+        openAIOnboardingCancellationSource = null;
+        cancellationSource?.Cancel();
+    }
+
+    private void RefreshOpenAIOnboardingPresentation()
+    {
+        if (!HasStoredApiKey)
+        {
+            ClearOpenAIOnboardingState();
+            return;
+        }
+
+        if (IsOpenAIOnboarded)
+        {
+            OpenAIOnboardingStatusText = BrandText.OpenAIReady;
+            OpenAIOnboardingDetailText =
+                $"{Settings.OpenAIValidatedModelId}  |  checked {Settings.OpenAIValidatedAtUtc:MMM d}";
+            return;
+        }
+
+        OpenAIOnboardingStatusText = "Key stored";
+        OpenAIOnboardingDetailText = "Connection test pending";
+    }
+
+    private void ClearOpenAIOnboardingState()
+    {
+        AvailableOpenAIModels = [CompanionSettings.DefaultOpenAIModelId];
+        HasDiscoveredOpenAIModels = false;
+        OpenAIModelRecommendationText = string.Empty;
+        Settings.OpenAIValidatedModelId = string.Empty;
+        Settings.OpenAIValidatedAtUtc = null;
+        OpenAIOnboardingStatusText = BrandText.OpenAIAddKey;
+        OpenAIOnboardingDetailText = "Not connected";
+        OnPropertyChanged(nameof(IsOpenAIOnboarded));
+    }
+
+    private static string DescribeOpenAIOnboardingFailure(OpenAiProviderException exception)
+    {
+        if (exception.ProviderCode is "insufficient_quota" or "billing_not_active")
+        {
+            return "API billing or credits are required for this account.";
+        }
+
+        if (exception.ProviderCode is "model_not_found" or "invalid_model" or "model_not_available")
+        {
+            return "The selected model is not available to this project.";
+        }
+
+        if (exception.ProviderCode == "no_compatible_models")
+        {
+            return "This project does not expose a compatible visual model. Check project model usage.";
+        }
+
+        if (exception.ProviderCode == "invalid_key_format")
+        {
+            return "Paste a fresh key without quotes or unsupported characters.";
+        }
+
+        return exception.FailureKind switch
+        {
+            OpenAiProviderFailureKind.MissingApiKey => "Add an OpenAI API key to continue.",
+            OpenAiProviderFailureKind.Authentication => "OpenAI rejected this key. Replace it with an active API key.",
+            OpenAiProviderFailureKind.Permission => "This key needs Models read access and Responses write access.",
+            OpenAiProviderFailureKind.RateLimited => "OpenAI is rate limiting this project. Try again shortly.",
+            OpenAiProviderFailureKind.Transport => "Clicky could not reach OpenAI from this Windows session.",
+            OpenAiProviderFailureKind.Server => "OpenAI is temporarily unavailable. Try again shortly.",
+            _ => string.IsNullOrWhiteSpace(exception.ProviderCode)
+                ? "OpenAI could not validate this project."
+                : $"OpenAI returned {exception.ProviderCode}.",
+        };
     }
 
     private bool IsCurrent(CompanionInteractionId interactionId) =>
@@ -1446,6 +1708,26 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(IsOpenAISpeechProvider));
             OnPropertyChanged(nameof(IsElevenLabsSpeechProvider));
             OnPropertyChanged(nameof(CanSaveElevenLabsApiKey));
+        }
+
+        if (eventArgs.PropertyName is
+            nameof(CompanionSettings.OpenAIModelId) or
+            nameof(CompanionSettings.OpenAIValidatedModelId) or
+            nameof(CompanionSettings.OpenAIValidatedAtUtc))
+        {
+            OnPropertyChanged(nameof(IsOpenAIOnboarded));
+        }
+
+        if (eventArgs.PropertyName == nameof(CompanionSettings.OpenAIModelId) &&
+            !IsProviderOperationBusy &&
+            IsOpenAIProvider &&
+            HasStoredApiKey &&
+            !IsOpenAIOnboarded)
+        {
+            Settings.OpenAIValidatedModelId = string.Empty;
+            Settings.OpenAIValidatedAtUtc = null;
+            OpenAIOnboardingStatusText = "Model changed";
+            OpenAIOnboardingDetailText = "Connection test pending";
         }
     }
 
