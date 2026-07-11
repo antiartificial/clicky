@@ -58,6 +58,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     private string openAIOnboardingDetailText = "Not connected";
     private string openAIModelRecommendationText = string.Empty;
     private bool hasDiscoveredOpenAIModels;
+    private bool hasProviderApiKeyEntry;
     private bool hasStoredElevenLabsApiKey;
     private string elevenLabsApiKeyStatusText = BrandText.ApiKeyNotStored;
     private VoiceInteraction? voiceInteraction;
@@ -406,10 +407,28 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     }
 
     public string SaveApiKeyButtonText => IsOpenAIProvider
-        ? BrandText.OpenAIConnectLabel
+        ? HasProviderApiKeyEntry
+            ? HasStoredApiKey
+                ? BrandText.OpenAIReplaceAndTestLabel
+                : BrandText.OpenAIConnectLabel
+            : HasStoredApiKey
+                ? BrandText.OpenAITestStoredLabel
+                : BrandText.OpenAIConnectLabel
         : HasStoredApiKey
             ? BrandText.ReplaceApiKeyLabel
             : BrandText.SaveApiKeyLabel;
+
+    public bool HasProviderApiKeyEntry
+    {
+        get => hasProviderApiKeyEntry;
+        private set
+        {
+            if (SetProperty(ref hasProviderApiKeyEntry, value))
+            {
+                OnPropertyChanged(nameof(SaveApiKeyButtonText));
+            }
+        }
+    }
 
     public bool HasStoredElevenLabsApiKey
     {
@@ -442,6 +461,9 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     public RelayCommand TestOpenAIConnectionCommand { get; }
 
     public RelayCommand ClearConversationCommand { get; }
+
+    public void SetProviderApiKeyEntryAvailable(bool isAvailable) =>
+        HasProviderApiKeyEntry = isAvailable;
 
     public void SetSettingsVisible(bool isVisible)
     {
@@ -647,6 +669,11 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             IsProviderOperationBusy = false;
         }
     }
+
+    public Task ConnectOrTestSelectedProviderAsync(string apiKey) =>
+        IsOpenAIProvider && HasStoredApiKey && string.IsNullOrWhiteSpace(apiKey)
+            ? TestOpenAIConnectionAsync()
+            : SaveSelectedProviderApiKeyAsync(apiKey);
 
     public async Task DeleteSelectedProviderApiKeyAsync()
     {

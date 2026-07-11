@@ -158,6 +158,40 @@ public sealed class ProviderSettingsViewModelTests
     }
 
     [TestMethod]
+    public async Task StoredOpenAIKey_EmptyConnectInputTestsWithoutReplacingCredential()
+    {
+        var keyStore = new FakeProviderApiKeyStore();
+        keyStore.StoredProviders.Add(AiProviderKind.OpenAI);
+        var onboarding = new FakeOpenAiOnboardingClient((preferredModel, _) =>
+        {
+            Assert.AreEqual(CompanionSettings.DefaultOpenAIModelId, preferredModel);
+            return Task.FromResult(new OpenAiOnboardingResult(
+                [CompanionSettings.DefaultOpenAIModelId],
+                CompanionSettings.DefaultOpenAIModelId,
+                CompanionSettings.DefaultOpenAIModelId,
+                DateTimeOffset.UtcNow));
+        });
+        var (viewModel, _) = CreateViewModel(
+            keyStore,
+            new CompanionSettings(),
+            onboarding);
+
+        await viewModel.SelectProviderAsync(AiProviderKind.OpenAI);
+        viewModel.SetSettingsVisible(true);
+        Assert.AreEqual(BrandText.OpenAITestStoredLabel, viewModel.SaveApiKeyButtonText);
+
+        viewModel.SetProviderApiKeyEntryAvailable(true);
+        Assert.AreEqual(BrandText.OpenAIReplaceAndTestLabel, viewModel.SaveApiKeyButtonText);
+        viewModel.SetProviderApiKeyEntryAvailable(false);
+
+        await viewModel.ConnectOrTestSelectedProviderAsync(string.Empty);
+
+        Assert.AreEqual(1, onboarding.Calls);
+        Assert.IsNull(keyStore.LastSavedKey);
+        Assert.IsTrue(viewModel.IsOpenAIOnboarded);
+    }
+
+    [TestMethod]
     public async Task Settings_CanOpenAfterResponseButNotDuringActiveWork()
     {
         var (viewModel, _) = CreateViewModel(new FakeProviderApiKeyStore());

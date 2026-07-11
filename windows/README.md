@@ -64,7 +64,7 @@ For direct OpenAI, Anthropic, or Gemini access:
 5. Clicky stores the key, retrieves the models visible to that OpenAI project, recommends a compatible visual-tutoring model, and runs one small image Responses request.
 6. Confirm that the Key, Models, and Vision indicators are complete and the status reads `OpenAI ready`.
 
-To rotate an OpenAI key, enter the replacement and click `Connect & test`. `Test again` rechecks the stored key and currently selected model without replacing the credential. To delete it, click `Remove key`. Clicky never reveals a saved key.
+When an OpenAI key is already stored, leaving the masked field empty changes the primary action to `Test stored key` and reuses the Credential Manager entry. Typing a new value changes it to `Replace & test`. `Test again` also rechecks the stored key and currently selected model without replacing the credential. To delete it, click `Remove key`. Clicky never reveals a saved key.
 
 OpenAI onboarding calls `GET /v1/models`, filters the returned IDs to likely Responses-and-image-capable tutoring families, and currently prefers `gpt-5.4-mini` when the account exposes it. Because the model-list response does not advertise endpoint or image capabilities, Clicky treats the small image Responses request as the authoritative compatibility check. A restricted OpenAI key needs read access for Models and write access for Responses; the project must also have API billing or credits and allow the selected model. Validation metadata is non-secret and persists in `settings.json`; changing the model or removing the key invalidates the Ready state. On startup, an unvalidated OpenAI setup opens directly to Settings.
 

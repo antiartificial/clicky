@@ -35,6 +35,8 @@ public static class BrandText
     public const string ApiKeyRemoveFailed = "Could not remove the key from Windows Credential Manager.";
     public const string ApiKeyStatusFailed = "Could not read key status from Windows Credential Manager.";
     public const string OpenAIConnectLabel = "Connect & test";
+    public const string OpenAITestStoredLabel = "Test stored key";
+    public const string OpenAIReplaceAndTestLabel = "Replace & test";
     public const string OpenAIRetestLabel = "Test again";
     public const string OpenAIConnecting = "Checking account access";
     public const string OpenAIReady = "OpenAI ready";

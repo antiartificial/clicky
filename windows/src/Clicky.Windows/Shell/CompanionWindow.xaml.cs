@@ -162,7 +162,23 @@ public partial class CompanionWindow : Window
     private async Task SelectProviderAsync(AiProviderKind provider)
     {
         ProviderApiKeyPasswordBox.Clear();
+        viewModel.SetProviderApiKeyEntryAvailable(false);
         await viewModel.SelectProviderAsync(provider);
+    }
+
+    private void ProviderApiKeyPasswordBox_PasswordChanged(
+        object sender,
+        RoutedEventArgs routedEventArgs)
+    {
+        var securePassword = ProviderApiKeyPasswordBox.SecurePassword;
+        try
+        {
+            viewModel.SetProviderApiKeyEntryAvailable(securePassword.Length > 0);
+        }
+        finally
+        {
+            securePassword.Dispose();
+        }
     }
 
     private async void SaveApiKeyButton_Click(object sender, RoutedEventArgs routedEventArgs)
@@ -170,12 +186,15 @@ public partial class CompanionWindow : Window
         var securePassword = ProviderApiKeyPasswordBox.SecurePassword;
         try
         {
-            var apiKey = new NetworkCredential(string.Empty, securePassword).Password;
-            await viewModel.SaveSelectedProviderApiKeyAsync(apiKey);
+            var apiKey = securePassword.Length == 0
+                ? string.Empty
+                : new NetworkCredential(string.Empty, securePassword).Password;
+            await viewModel.ConnectOrTestSelectedProviderAsync(apiKey);
         }
         finally
         {
             ProviderApiKeyPasswordBox.Clear();
+            viewModel.SetProviderApiKeyEntryAvailable(false);
             securePassword.Dispose();
         }
     }
