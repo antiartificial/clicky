@@ -19,7 +19,7 @@ namespace Clicky.Windows.Overlay;
 
 internal sealed class PointCueWindow : Window
 {
-    private static readonly TimeSpan ArrivalOrbitDuration = TimeSpan.FromMilliseconds(360);
+    private static readonly TimeSpan ArrivalOrbitDuration = TimeSpan.FromMilliseconds(300);
     private static readonly System.Windows.Media.Brush GuideBlueBrush = CreateBrush(0x3D, 0x8B, 0xFF);
     private static readonly System.Windows.Media.Brush GuideCyanBrush = CreateBrush(0x78, 0xDC, 0xFF);
     private static readonly System.Windows.Media.Brush CoralBrush = CreateBrush(0xFF, 0x6B, 0x5F);
@@ -191,6 +191,11 @@ internal sealed class PointCueWindow : Window
         }
 
         PositionWindowAtCue(windowHandle, layout, start, showWindow: true);
+        if (!wasVisible)
+        {
+            PlayReveal();
+        }
+
         currentCuePosition = start;
         motionStart = start;
         motionEnd = destination;
@@ -525,6 +530,35 @@ internal sealed class PointCueWindow : Window
         twinkleScale.BeginAnimation(ScaleTransform.ScaleYProperty, twinkleScaleAnimation.Clone());
     }
 
+    private void PlayReveal()
+    {
+        Opacity = 1;
+        BeginAnimation(
+            OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(140))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                FillBehavior = FillBehavior.Stop,
+            });
+
+        var auraScale = new DoubleAnimation(0.68, 1.45, TimeSpan.FromMilliseconds(190))
+        {
+            AutoReverse = true,
+            RepeatBehavior = new RepeatBehavior(2),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+        };
+        pulseScale.BeginAnimation(ScaleTransform.ScaleXProperty, auraScale);
+        pulseScale.BeginAnimation(ScaleTransform.ScaleYProperty, auraScale.Clone());
+        pulse.BeginAnimation(
+            OpacityProperty,
+            new DoubleAnimation(0.95, 0.3, TimeSpan.FromMilliseconds(190))
+            {
+                AutoReverse = true,
+                RepeatBehavior = new RepeatBehavior(2),
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+            });
+    }
+
     private void PlayLanding()
     {
         var landing = new DoubleAnimationUsingKeyFrames
@@ -560,6 +594,8 @@ internal sealed class PointCueWindow : Window
     {
         motionTimer.Stop();
         isArrivalOrbitActive = false;
+        BeginAnimation(OpacityProperty, null);
+        Opacity = 1;
     }
 
     private void StopPulse()

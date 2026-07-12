@@ -7,6 +7,37 @@ namespace Clicky.Windows.Tests;
 public sealed class PointCuePresenterTests
 {
     [TestMethod]
+    public void SelectMotionOrigin_UsesCompanionForFirstCue()
+    {
+        var companion = new DesktopPoint(1800, 980);
+
+        var result = PointCuePresenter.SelectMotionOrigin(
+            hasPresentedCue: false,
+            initialOrigin: companion,
+            pointerOrigin: new DesktopPoint(400, 300),
+            destination: new DesktopPoint(700, 500));
+
+        Assert.AreEqual(companion, result);
+    }
+
+    [TestMethod]
+    public void SelectMotionOrigin_LeadsFromPointerTowardLaterDestination()
+    {
+        var result = PointCuePresenter.SelectMotionOrigin(
+            hasPresentedCue: true,
+            initialOrigin: new DesktopPoint(1800, 980),
+            pointerOrigin: new DesktopPoint(400, 300),
+            destination: new DesktopPoint(700, 700));
+
+        Assert.IsNotNull(result);
+        Assert.IsGreaterThan(400, result.Value.X);
+        Assert.IsGreaterThan(300, result.Value.Y);
+        Assert.AreEqual(24, Math.Sqrt(
+            Math.Pow(result.Value.X - 400, 2) +
+            Math.Pow(result.Value.Y - 300, 2)), 0.001);
+    }
+
+    [TestMethod]
     [DataRow(96d)]
     [DataRow(120d)]
     [DataRow(144d)]

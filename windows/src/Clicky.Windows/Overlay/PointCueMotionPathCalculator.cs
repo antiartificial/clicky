@@ -6,13 +6,13 @@ internal static class PointCueMotionPathCalculator
 {
     internal const double RevealOffsetXDip = -84;
     internal const double RevealOffsetYDip = 54;
-    internal const double ArrivalOrbitRadiusXDip = 16;
-    internal const double ArrivalOrbitRadiusYDip = 10;
+    internal const double ArrivalOrbitRadiusXDip = 24;
+    internal const double ArrivalOrbitRadiusYDip = 16;
 
     private const double BendRatio = 0.2;
     private const double MaximumBendPixels = 34;
-    private const double MinimumDurationMilliseconds = 280;
-    private const double MaximumDurationMilliseconds = 560;
+    private const double MinimumDurationMilliseconds = 220;
+    private const double MaximumDurationMilliseconds = 460;
 
     internal static PointCueMotionPoint Calculate(
         PointCueMotionPoint start,
@@ -156,7 +156,7 @@ internal static class PointCueMotionPathCalculator
         var deltaY = end.Y - start.Y;
         var distance = Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY));
         var milliseconds = Math.Clamp(
-            150 + (distance * 0.12),
+            120 + (distance * 0.08),
             MinimumDurationMilliseconds,
             MaximumDurationMilliseconds);
         return TimeSpan.FromMilliseconds(milliseconds);

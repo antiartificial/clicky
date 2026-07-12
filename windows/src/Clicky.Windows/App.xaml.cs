@@ -8,6 +8,7 @@ using Clicky.Windows.Motion;
 using Clicky.Windows.Networking;
 using Clicky.Windows.Overlay;
 using Clicky.Windows.Persistence;
+using Clicky.Windows.Pointing;
 using Clicky.Windows.Providers;
 using Clicky.Windows.Session;
 using Clicky.Windows.Shell;
@@ -108,6 +109,7 @@ public partial class App : System.Windows.Application
             {
                 MotionEnabled = () => CompanionMotionPolicy.IsEnabled(settings),
                 MotionOrigin = () => companionWindow?.GetPointCueOrigin(),
+                PointerOrigin = DesktopCursorPositionProvider.TryGetCurrentPosition,
             });
         dictationTranscriber = new SystemSpeechDictationTranscriber();
         companionViewModel = new CompanionViewModel(

@@ -54,7 +54,7 @@ public sealed class PointCueMotionPathCalculatorTests
             dpiScaleX: 1.5,
             dpiScaleY: 1.25);
 
-        Assert.AreEqual(476, start.X, 0.001);
+        Assert.AreEqual(464, start.X, 0.001);
         Assert.AreEqual(300, start.Y, 0.001);
         Assert.AreEqual(500, firstQuarter.X, 0.001);
         Assert.IsLessThan(300, firstQuarter.Y);
@@ -128,6 +128,7 @@ public sealed class PointCueMotionPathCalculatorTests
 
         Assert.AreEqual(TimeSpan.FromSeconds(15), options.AutoHideAfter);
         Assert.IsNull(options.MotionOrigin());
+        Assert.IsNull(options.PointerOrigin());
     }
 
     [TestMethod]

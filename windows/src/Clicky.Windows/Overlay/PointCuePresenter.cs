@@ -5,12 +5,14 @@ namespace Clicky.Windows.Overlay;
 
 public sealed class PointCuePresenter : IPointCuePresenter
 {
+    private const double PointerLeadDistancePixels = 24;
     private readonly Dispatcher dispatcher;
     private readonly IPointCueMonitorProvider monitorProvider;
     private readonly PointCuePresenterOptions options;
     private PointCueWindow? window;
     private CancellationTokenSource? autoHideCancellation;
     private long displayGeneration;
+    private bool hasPresentedCue;
     private int disposeState;
 
     public PointCuePresenter(PointCuePresenterOptions? options = null)
@@ -50,6 +52,11 @@ public sealed class PointCuePresenter : IPointCuePresenter
         if (this.options.MotionOrigin is null)
         {
             throw new ArgumentException("Motion-origin callback cannot be null.", nameof(options));
+        }
+
+        if (this.options.PointerOrigin is null)
+        {
+            throw new ArgumentException("Pointer-origin callback cannot be null.", nameof(options));
         }
     }
 
@@ -111,12 +118,18 @@ public sealed class PointCuePresenter : IPointCuePresenter
 
         var monitor = monitorProvider.GetMonitorContaining(point);
         var layout = PointCueLayoutCalculator.Calculate(point, monitor, label is not null);
+        var motionOrigin = SelectMotionOrigin(
+            hasPresentedCue,
+            options.MotionOrigin(),
+            options.PointerOrigin(),
+            point);
         window ??= new PointCueWindow();
         window.ShowCue(
             layout,
             label,
             options.ShouldUseMotion(),
-            options.MotionOrigin());
+            motionOrigin);
+        hasPresentedCue = true;
 
         var generation = ++displayGeneration;
         if (options.AutoHideAfter is { } autoHideAfter)
@@ -218,6 +231,35 @@ public sealed class PointCuePresenter : IPointCuePresenter
         }
 
         return string.Join(' ', words);
+    }
+
+    internal static DesktopPoint? SelectMotionOrigin(
+        bool hasPresentedCue,
+        DesktopPoint? initialOrigin,
+        DesktopPoint? pointerOrigin,
+        DesktopPoint destination)
+    {
+        if (!hasPresentedCue && initialOrigin is not null)
+        {
+            return initialOrigin;
+        }
+
+        if (pointerOrigin is not { } pointer)
+        {
+            return initialOrigin;
+        }
+
+        var deltaX = destination.X - pointer.X;
+        var deltaY = destination.Y - pointer.Y;
+        var distance = Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY));
+        if (!double.IsFinite(distance) || distance < 1)
+        {
+            return pointer;
+        }
+
+        return new DesktopPoint(
+            pointer.X + ((deltaX / distance) * PointerLeadDistancePixels),
+            pointer.Y + ((deltaY / distance) * PointerLeadDistancePixels));
     }
 
     private void ThrowIfDisposed()
