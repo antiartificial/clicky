@@ -18,6 +18,7 @@ namespace Clicky.Windows.Overlay;
 
 internal sealed class PointCueWindow : Window
 {
+    private static readonly TimeSpan ArrivalOrbitDuration = TimeSpan.FromMilliseconds(360);
     private static readonly System.Windows.Media.Brush SignalLimeBrush = CreateBrush(0xB8, 0xE3, 0x4A);
     private static readonly System.Windows.Media.Brush CoralBrush = CreateBrush(0xFF, 0x6B, 0x5F);
     private static readonly System.Windows.Media.Brush StudioTealBrush = CreateBrush(0x16, 0x8A, 0x7B);
@@ -40,11 +41,13 @@ internal sealed class PointCueWindow : Window
     private HwndSource? hwndSource;
     private PointCueMotionPoint? currentCuePosition;
     private PointCueMotionPoint motionStart;
+    private PointCueMotionPoint motionApproachEnd;
     private PointCueMotionPoint motionEnd;
     private PointCueLayout motionLayout;
     private nint motionWindowHandle;
     private long motionStartTimestamp;
     private TimeSpan motionDuration;
+    private bool isArrivalOrbitActive;
 
     public PointCueWindow()
     {
@@ -184,7 +187,14 @@ internal sealed class PointCueWindow : Window
         motionEnd = destination;
         motionLayout = layout;
         motionWindowHandle = windowHandle;
-        motionDuration = PointCueMotionPathCalculator.CalculateDuration(start, destination);
+        var approachEnd = PointCueMotionPathCalculator.CalculateArrivalOrbit(
+            destination,
+            progress: 0,
+            dpiScaleX: layout.DpiScaleX,
+            dpiScaleY: layout.DpiScaleY);
+        motionDuration = PointCueMotionPathCalculator.CalculateDuration(start, approachEnd);
+        motionApproachEnd = approachEnd;
+        isArrivalOrbitActive = false;
         motionStartTimestamp = Stopwatch.GetTimestamp();
         motionTimer.Start();
     }
@@ -405,21 +415,49 @@ internal sealed class PointCueWindow : Window
     {
         var elapsedSeconds = (Stopwatch.GetTimestamp() - motionStartTimestamp) /
             (double)Stopwatch.Frequency;
-        var progress = elapsedSeconds / motionDuration.TotalSeconds;
+        var progress = elapsedSeconds /
+            (isArrivalOrbitActive ? ArrivalOrbitDuration.TotalSeconds : motionDuration.TotalSeconds);
         if (progress >= 1)
         {
-            CompleteMotion();
+            if (isArrivalOrbitActive)
+            {
+                CompleteMotion();
+            }
+            else
+            {
+                BeginArrivalOrbit();
+            }
+
             return;
         }
 
-        var position = PointCueMotionPathCalculator.Calculate(motionStart, motionEnd, progress);
+        var position = isArrivalOrbitActive
+            ? PointCueMotionPathCalculator.CalculateArrivalOrbit(
+                motionEnd,
+                progress,
+                motionLayout.DpiScaleX,
+                motionLayout.DpiScaleY)
+            : PointCueMotionPathCalculator.Calculate(motionStart, motionApproachEnd, progress);
         PositionWindowAtCue(motionWindowHandle, motionLayout, position, showWindow: true);
         currentCuePosition = position;
+    }
+
+    private void BeginArrivalOrbit()
+    {
+        PositionWindowAtCue(
+            motionWindowHandle,
+            motionLayout,
+            motionApproachEnd,
+            showWindow: true);
+        currentCuePosition = motionApproachEnd;
+        isArrivalOrbitActive = true;
+        motionStartTimestamp = Stopwatch.GetTimestamp();
     }
 
     private void CompleteMotion()
     {
         motionTimer.Stop();
+        isArrivalOrbitActive = false;
         PositionWindow(motionWindowHandle, motionLayout, showWindow: true);
         currentCuePosition = motionEnd;
         StartPulse();
@@ -512,6 +550,7 @@ internal sealed class PointCueWindow : Window
     private void StopMotion()
     {
         motionTimer.Stop();
+        isArrivalOrbitActive = false;
     }
 
     private void StopPulse()

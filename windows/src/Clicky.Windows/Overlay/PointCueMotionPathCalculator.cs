@@ -6,9 +6,11 @@ internal static class PointCueMotionPathCalculator
 {
     internal const double RevealOffsetXDip = -84;
     internal const double RevealOffsetYDip = 54;
+    internal const double ArrivalOrbitRadiusXDip = 16;
+    internal const double ArrivalOrbitRadiusYDip = 10;
 
-    private const double BendRatio = 0.12;
-    private const double MaximumBendPixels = 20;
+    private const double BendRatio = 0.2;
+    private const double MaximumBendPixels = 34;
     private const double MinimumDurationMilliseconds = 280;
     private const double MaximumDurationMilliseconds = 560;
 
@@ -43,19 +45,55 @@ internal static class PointCueMotionPathCalculator
         }
 
         var bend = Math.Min(distance * BendRatio, MaximumBendPixels);
-        var control = new PointCueMotionPoint(
-            start.X + (deltaX / 2) - ((deltaY / distance) * bend),
-            start.Y + (deltaY / 2) + ((deltaX / distance) * bend));
+        var normalX = -deltaY / distance;
+        var normalY = deltaX / distance;
+        var firstControl = new PointCueMotionPoint(
+            start.X + (deltaX * 0.3) + (normalX * bend),
+            start.Y + (deltaY * 0.3) + (normalY * bend));
+        var secondControl = new PointCueMotionPoint(
+            start.X + (deltaX * 0.7) - (normalX * bend),
+            start.Y + (deltaY * 0.7) - (normalY * bend));
         var easedProgress = EaseForLanding(progress);
         var remaining = 1 - easedProgress;
 
         return new PointCueMotionPoint(
-            (remaining * remaining * start.X) +
-                (2 * remaining * easedProgress * control.X) +
-                (easedProgress * easedProgress * end.X),
-            (remaining * remaining * start.Y) +
-                (2 * remaining * easedProgress * control.Y) +
-                (easedProgress * easedProgress * end.Y));
+            (remaining * remaining * remaining * start.X) +
+                (3 * remaining * remaining * easedProgress * firstControl.X) +
+                (3 * remaining * easedProgress * easedProgress * secondControl.X) +
+                (easedProgress * easedProgress * easedProgress * end.X),
+            (remaining * remaining * remaining * start.Y) +
+                (3 * remaining * remaining * easedProgress * firstControl.Y) +
+                (3 * remaining * easedProgress * easedProgress * secondControl.Y) +
+                (easedProgress * easedProgress * easedProgress * end.Y));
+    }
+
+    internal static PointCueMotionPoint CalculateArrivalOrbit(
+        PointCueMotionPoint destination,
+        double progress,
+        double dpiScaleX,
+        double dpiScaleY)
+    {
+        ValidatePoint(destination, nameof(destination));
+        ValidateScale(dpiScaleX, nameof(dpiScaleX));
+        ValidateScale(dpiScaleY, nameof(dpiScaleY));
+        if (!double.IsFinite(progress))
+        {
+            throw new ArgumentOutOfRangeException(nameof(progress), "Progress must be finite.");
+        }
+
+        var clamped = Math.Clamp(progress, 0, 1);
+        if (clamped >= 1)
+        {
+            return destination;
+        }
+
+        var radiusEnvelope = 1 - SmoothStep(clamped);
+        var angle = Math.PI + (Math.Tau * clamped);
+        return new PointCueMotionPoint(
+            destination.X +
+                (ArrivalOrbitRadiusXDip * dpiScaleX * radiusEnvelope * Math.Cos(angle)),
+            destination.Y +
+                (ArrivalOrbitRadiusYDip * dpiScaleY * radiusEnvelope * Math.Sin(angle)));
     }
 
     internal static double EaseForLanding(double progress)
@@ -116,5 +154,10 @@ internal static class PointCueMotionPathCalculator
                 parameterName,
                 "DPI scale must be finite and greater than zero.");
         }
+    }
+
+    private static double SmoothStep(double progress)
+    {
+        return progress * progress * (3 - (2 * progress));
     }
 }

@@ -16,17 +16,49 @@ public sealed class PointCueMotionPathCalculatorTests
     }
 
     [TestMethod]
-    public void Calculate_UsesRestrainedCurveBetweenEndpoints()
+    public void Calculate_UsesRestrainedSCurveBetweenEndpoints()
     {
         var start = new PointCueMotionPoint(0, 0);
-        var end = new PointCueMotionPoint(100, 0);
+        var end = new PointCueMotionPoint(160, 0);
 
-        var midpoint = PointCueMotionPathCalculator.Calculate(start, end, 0.5);
+        var firstTurn = PointCueMotionPathCalculator.Calculate(start, end, 0.18);
+        var secondTurn = PointCueMotionPathCalculator.Calculate(start, end, 0.65);
 
-        Assert.IsGreaterThan(50, midpoint.X);
-        Assert.IsLessThan(100, midpoint.X);
-        Assert.IsGreaterThan(0, midpoint.Y);
-        Assert.IsLessThanOrEqualTo(10, midpoint.Y);
+        Assert.IsGreaterThan(0, firstTurn.X);
+        Assert.IsLessThan(160, firstTurn.X);
+        Assert.IsGreaterThan(0, firstTurn.Y);
+        Assert.IsLessThanOrEqualTo(18, firstTurn.Y);
+        Assert.IsGreaterThan(firstTurn.X, secondTurn.X);
+        Assert.IsLessThan(0, secondTurn.Y);
+        Assert.IsGreaterThanOrEqualTo(-18, secondTurn.Y);
+    }
+
+    [TestMethod]
+    public void CalculateArrivalOrbit_CompletesShrinkingEllipseAtDestination()
+    {
+        var destination = new PointCueMotionPoint(500, 300);
+
+        var start = PointCueMotionPathCalculator.CalculateArrivalOrbit(
+            destination,
+            progress: 0,
+            dpiScaleX: 1.5,
+            dpiScaleY: 1.25);
+        var firstQuarter = PointCueMotionPathCalculator.CalculateArrivalOrbit(
+            destination,
+            progress: 0.25,
+            dpiScaleX: 1.5,
+            dpiScaleY: 1.25);
+        var finish = PointCueMotionPathCalculator.CalculateArrivalOrbit(
+            destination,
+            progress: 1,
+            dpiScaleX: 1.5,
+            dpiScaleY: 1.25);
+
+        Assert.AreEqual(476, start.X, 0.001);
+        Assert.AreEqual(300, start.Y, 0.001);
+        Assert.AreEqual(500, firstQuarter.X, 0.001);
+        Assert.IsLessThan(300, firstQuarter.Y);
+        Assert.AreEqual(destination, finish);
     }
 
     [TestMethod]
