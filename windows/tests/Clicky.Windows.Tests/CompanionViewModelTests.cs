@@ -8,6 +8,7 @@ using Clicky.Windows.Overlay;
 using Clicky.Windows.Pointing;
 using Clicky.Windows.Providers;
 using Clicky.Windows.Session;
+using Clicky.Windows.Speech;
 using Clicky.Windows.ViewModels;
 using Clicky.Windows.Voice;
 
@@ -82,6 +83,179 @@ public sealed class CompanionViewModelTests
             new[] { "hide", "show:400,300:solution explorer" },
             presenter.Calls);
         Assert.IsGreaterThanOrEqualTo(1, compactRequestCount);
+    }
+
+    [TestMethod]
+    public async Task SuccessfulAnswer_WhenSpeechEnabled_SynthesizesAndPlaysSpokenText()
+    {
+        var speechClient = new FakeTextToSpeechClient();
+        var playbackService = new FakeAudioPlaybackService();
+        var settings = new CompanionSettings { SpeechOutputEnabled = true };
+        var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) =>
+                Stream("Open Solution Explorer. [POINT:400,300:solution explorer]")),
+            settings: settings,
+            textToSpeechClient: speechClient,
+            audioPlaybackService: playbackService);
+
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "Where is the project?";
+        await viewModel.SubmitQuestionAsync();
+        await playbackService.Completed.Task;
+        await WaitUntilAsync(() => !viewModel.IsSpeechOutputBusy);
+
+        Assert.AreEqual(1, speechClient.Calls);
+        Assert.AreEqual("Open Solution Explorer.", speechClient.LastText);
+        Assert.AreEqual(1, playbackService.PlayCalls);
+        Assert.AreEqual(BrandText.SpeechPlayed, viewModel.SpeechOutputStatusText);
+    }
+
+    [TestMethod]
+    public async Task TestSpeechOutputAsync_PermissionFailureIsVisibleAndNonFatal()
+    {
+        var speechClient = new FakeTextToSpeechClient(
+            failure: new SpeechSynthesisException(
+                SpeechSynthesisProvider.OpenAI,
+                SpeechSynthesisFailureKind.Permission,
+                "provider detail"));
+        var settings = new CompanionSettings { SpeechOutputEnabled = true };
+        var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) => Stream("unused [POINT:none]")),
+            settings: settings,
+            textToSpeechClient: speechClient,
+            audioPlaybackService: new FakeAudioPlaybackService());
+        viewModel.SetSettingsVisible(true);
+
+        await viewModel.TestSpeechOutputAsync();
+
+        Assert.AreEqual(1, speechClient.Calls);
+        StringAssert.Contains(viewModel.SpeechOutputStatusText, "cannot use");
+        Assert.IsTrue(viewModel.TestSpeechOutputCommand.CanExecute(null));
+    }
+
+    [TestMethod]
+    public async Task OpeningSettings_DoesNotCancelActiveSpeechPlayback()
+    {
+        var releasePlayback = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var playbackService = new FakeAudioPlaybackService(releasePlayback.Task);
+        var settings = new CompanionSettings { SpeechOutputEnabled = true };
+        var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) => Stream("Use the toolbar. [POINT:none]")),
+            settings: settings,
+            textToSpeechClient: new FakeTextToSpeechClient(),
+            audioPlaybackService: playbackService);
+
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "Where should I look?";
+        await viewModel.SubmitQuestionAsync();
+        await playbackService.Played.Task;
+
+        viewModel.SetSettingsVisible(true);
+        await Task.Delay(20);
+
+        Assert.IsTrue(viewModel.IsSettingsVisible);
+        Assert.AreEqual(CompanionSessionState.Idle, viewModel.State);
+        Assert.IsTrue(viewModel.IsSpeechOutputBusy);
+
+        releasePlayback.SetResult();
+        await playbackService.Completed.Task;
+        await WaitUntilAsync(() => !viewModel.IsSpeechOutputBusy);
+        Assert.IsFalse(viewModel.IsSpeechOutputBusy);
+    }
+
+    [TestMethod]
+    public async Task CancelCurrentInteractionAsync_ClearsSpeechBusyState()
+    {
+        var neverCompletesPlayback = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var playbackService = new FakeAudioPlaybackService(neverCompletesPlayback.Task);
+        var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) => Stream("Use the toolbar. [POINT:none]")),
+            settings: new CompanionSettings { SpeechOutputEnabled = true },
+            textToSpeechClient: new FakeTextToSpeechClient(),
+            audioPlaybackService: playbackService);
+
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "Where should I look?";
+        await viewModel.SubmitQuestionAsync();
+        await playbackService.Played.Task;
+        Assert.IsTrue(viewModel.IsSpeechOutputBusy);
+
+        await viewModel.CancelCurrentInteractionAsync();
+
+        Assert.IsFalse(viewModel.IsSpeechOutputBusy);
+        Assert.AreEqual(BrandText.SpeechReady, viewModel.SpeechOutputStatusText);
+    }
+
+    [TestMethod]
+    public async Task DisablingSpeech_CancelsActivePlaybackAndShowsDisabledState()
+    {
+        var neverCompletesPlayback = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var playbackService = new FakeAudioPlaybackService(neverCompletesPlayback.Task);
+        var settings = new CompanionSettings { SpeechOutputEnabled = true };
+        var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) => Stream("Use the toolbar. [POINT:none]")),
+            settings: settings,
+            textToSpeechClient: new FakeTextToSpeechClient(),
+            audioPlaybackService: playbackService);
+
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "Where should I look?";
+        await viewModel.SubmitQuestionAsync();
+        await playbackService.Played.Task;
+
+        settings.SpeechOutputEnabled = false;
+        await playbackService.Completed.Task;
+
+        Assert.IsFalse(viewModel.IsSpeechOutputBusy);
+        Assert.AreEqual(BrandText.SpeechDisabled, viewModel.SpeechOutputStatusText);
+    }
+
+    [TestMethod]
+    public async Task ChangingSpeechProvider_CancelsActivePlayback()
+    {
+        var neverCompletesPlayback = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var playbackService = new FakeAudioPlaybackService(neverCompletesPlayback.Task);
+        var settings = new CompanionSettings { SpeechOutputEnabled = true };
+        var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) => Stream("Use the toolbar. [POINT:none]")),
+            settings: settings,
+            textToSpeechClient: new FakeTextToSpeechClient(),
+            audioPlaybackService: playbackService);
+
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "Where should I look?";
+        await viewModel.SubmitQuestionAsync();
+        await playbackService.Played.Task;
+
+        settings.TextToSpeechProvider = TextToSpeechProviderKind.ElevenLabs;
+        await playbackService.Completed.Task;
+
+        Assert.IsFalse(viewModel.IsSpeechOutputBusy);
+        Assert.AreEqual(BrandText.SpeechReady, viewModel.SpeechOutputStatusText);
+    }
+
+    [TestMethod]
+    public void PersistedOpenAIModel_IsAvailableBeforeModelDiscovery()
+    {
+        var settings = new CompanionSettings { OpenAIModelId = "gpt-persisted-custom" };
+        var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) => Stream("unused [POINT:none]")),
+            settings: settings);
+
+        CollectionAssert.Contains(
+            viewModel.AvailableOpenAIModels.ToArray(),
+            "gpt-persisted-custom");
     }
 
     [TestMethod]
@@ -602,21 +776,30 @@ public sealed class CompanionViewModelTests
         IActiveWindowCaptureService captureService,
         IWorkerClient workerClient,
         IPointCuePresenter? pointCuePresenter = null,
-        IDictationTranscriber? dictationTranscriber = null) =>
+        IDictationTranscriber? dictationTranscriber = null,
+        CompanionSettings? settings = null,
+        ITextToSpeechClient? textToSpeechClient = null,
+        IAudioPlaybackService? audioPlaybackService = null) =>
         CreateViewModelWithService(
             captureService,
             workerClient,
             pointCuePresenter,
-            dictationTranscriber).ViewModel;
+            dictationTranscriber,
+            settings,
+            textToSpeechClient,
+            audioPlaybackService).ViewModel;
 
     private static (CompanionViewModel ViewModel, TutorInteractionService InteractionService)
         CreateViewModelWithService(
             IActiveWindowCaptureService captureService,
             IWorkerClient workerClient,
             IPointCuePresenter? pointCuePresenter = null,
-            IDictationTranscriber? dictationTranscriber = null)
+            IDictationTranscriber? dictationTranscriber = null,
+            CompanionSettings? settings = null,
+            ITextToSpeechClient? textToSpeechClient = null,
+            IAudioPlaybackService? audioPlaybackService = null)
     {
-        var settings = new CompanionSettings();
+        settings ??= new CompanionSettings();
         var coordinator = new CompanionSessionCoordinator();
         var interactionService = new TutorInteractionService(captureService, workerClient);
         var viewModel = new CompanionViewModel(
@@ -625,7 +808,9 @@ public sealed class CompanionViewModelTests
             interactionService,
             pointCuePresenter ?? new FakePointCuePresenter(),
             new FakeProviderApiKeyStore(),
-            dictationTranscriber);
+            dictationTranscriber,
+            textToSpeechClient,
+            audioPlaybackService);
         return (viewModel, interactionService);
     }
 
@@ -636,6 +821,16 @@ public sealed class CompanionViewModelTests
             600,
             new PhysicalPixelBounds(0, 0, 800, 600),
             "Visual Studio");
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        for (var attempt = 0; attempt < 100 && !condition(); attempt++)
+        {
+            await Task.Delay(2);
+        }
+
+        Assert.IsTrue(condition(), "The expected asynchronous state was not reached.");
+    }
 
     private static async IAsyncEnumerable<string> Stream(params string[] chunks)
     {
@@ -707,6 +902,64 @@ public sealed class CompanionViewModelTests
             WorkerChatRequest request,
             CancellationToken cancellationToken = default) =>
             stream(request, cancellationToken);
+    }
+
+    private sealed class FakeTextToSpeechClient(
+        SpeechSynthesisException? failure = null) : ITextToSpeechClient
+    {
+        private static readonly SpeechAudio WaveAudio = new(
+            new byte[]
+            {
+                0x52, 0x49, 0x46, 0x46, 0x04, 0x00,
+                0x00, 0x00, 0x57, 0x41, 0x56, 0x45,
+            },
+            "audio/wav");
+
+        public int Calls { get; private set; }
+
+        public string? LastText { get; private set; }
+
+        public Task<SpeechAudio> SynthesizeAsync(
+            string text,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            LastText = text;
+            return failure is null
+                ? Task.FromResult(WaveAudio)
+                : Task.FromException<SpeechAudio>(failure);
+        }
+    }
+
+    private sealed class FakeAudioPlaybackService(Task? playbackTask = null) : IAudioPlaybackService
+    {
+        public TaskCompletionSource Played { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Completed { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int PlayCalls { get; private set; }
+
+        public async Task PlayAsync(
+            SpeechAudio speechAudio,
+            CancellationToken cancellationToken = default)
+        {
+            PlayCalls++;
+            Played.TrySetResult();
+            try
+            {
+                await (playbackTask ?? Task.CompletedTask).WaitAsync(cancellationToken);
+            }
+            finally
+            {
+                Completed.TrySetResult();
+            }
+        }
+
+        public void Stop()
+        {
+        }
     }
 
     private sealed class FakeDictationTranscriber(

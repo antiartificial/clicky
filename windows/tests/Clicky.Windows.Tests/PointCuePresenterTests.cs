@@ -7,6 +7,33 @@ namespace Clicky.Windows.Tests;
 public sealed class PointCuePresenterTests
 {
     [TestMethod]
+    [DataRow(96d)]
+    [DataRow(120d)]
+    [DataRow(144d)]
+    public void Calculate_UnclampedCueKeepsCharacterLandingDotOnPhysicalTarget(double dpi)
+    {
+        var target = new DesktopPoint(420, 360);
+        var monitor = new PointCueMonitorMetrics(
+            workAreaLeftPixels: -600,
+            workAreaTopPixels: -200,
+            workAreaWidthPixels: 2400,
+            workAreaHeightPixels: 1400,
+            effectiveDpiX: dpi,
+            effectiveDpiY: dpi);
+
+        var result = PointCueLayoutCalculator.Calculate(target, monitor, hasLabel: true);
+
+        Assert.AreEqual(
+            target.X,
+            result.WindowLeftPixels + (result.CueCenterXDip * result.DpiScaleX),
+            0.51);
+        Assert.AreEqual(
+            target.Y,
+            result.WindowTopPixels + (result.CueCenterYDip * result.DpiScaleY),
+            0.51);
+    }
+
+    [TestMethod]
     public void Calculate_UsesPhysicalPixelsDirectlyAt100PercentDpi()
     {
         var monitor = new PointCueMonitorMetrics(

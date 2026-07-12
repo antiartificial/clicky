@@ -13,7 +13,6 @@ using WpfColor = System.Windows.Media.Color;
 using WpfFontFamily = System.Windows.Media.FontFamily;
 using WpfHorizontalAlignment = System.Windows.HorizontalAlignment;
 using WpfPoint = System.Windows.Point;
-using WpfRectangle = System.Windows.Shapes.Rectangle;
 
 namespace Clicky.Windows.Overlay;
 
@@ -21,6 +20,7 @@ internal sealed class PointCueWindow : Window
 {
     private static readonly System.Windows.Media.Brush SignalLimeBrush = CreateBrush(0xB8, 0xE3, 0x4A);
     private static readonly System.Windows.Media.Brush CoralBrush = CreateBrush(0xFF, 0x6B, 0x5F);
+    private static readonly System.Windows.Media.Brush StudioTealBrush = CreateBrush(0x16, 0x8A, 0x7B);
     private static readonly System.Windows.Media.Brush WarmWhiteBrush = CreateBrush(0xF4, 0xF1, 0xE8);
     private static readonly System.Windows.Media.Brush GraphiteBrush = CreateBrush(0xF0, 0x17, 0x19, 0x1D);
     private static readonly System.Windows.Media.Brush GraphiteLineBrush = CreateBrush(0xF0, 0x3A, 0x3E, 0x45);
@@ -29,6 +29,11 @@ internal sealed class PointCueWindow : Window
     private readonly Grid target;
     private readonly Ellipse pulse;
     private readonly ScaleTransform pulseScale;
+    private readonly Canvas character;
+    private readonly ScaleTransform characterScale;
+    private readonly TranslateTransform characterTranslate;
+    private readonly Ellipse twinkle;
+    private readonly ScaleTransform twinkleScale;
     private readonly Border labelSurface;
     private readonly TextBlock labelText;
     private readonly DispatcherTimer motionTimer;
@@ -77,7 +82,13 @@ internal sealed class PointCueWindow : Window
             RenderTransformOrigin = new WpfPoint(0.5, 0.5)
         };
 
-        target = CreateTarget(pulse);
+        var targetVisual = CreateClickletTarget(pulse);
+        target = targetVisual.Target;
+        character = targetVisual.Character;
+        characterScale = targetVisual.CharacterScale;
+        characterTranslate = targetVisual.CharacterTranslate;
+        twinkle = targetVisual.Twinkle;
+        twinkleScale = targetVisual.TwinkleScale;
         labelText = new TextBlock
         {
             Foreground = WarmWhiteBrush,
@@ -151,6 +162,7 @@ internal sealed class PointCueWindow : Window
             if (motionEnabled)
             {
                 StartPulse();
+                PlayLanding();
             }
             else
             {
@@ -218,7 +230,7 @@ internal sealed class PointCueWindow : Window
         base.OnClosed(eventArgs);
     }
 
-    private static Grid CreateTarget(Ellipse pulseElement)
+    private static ClickletVisual CreateClickletTarget(Ellipse pulseElement)
     {
         var result = new Grid
         {
@@ -228,48 +240,128 @@ internal sealed class PointCueWindow : Window
         };
 
         result.Children.Add(pulseElement);
-        result.Children.Add(new WpfRectangle
+
+        var characterScale = new ScaleTransform(1, 1);
+        var characterTranslate = new TranslateTransform();
+        var characterTransform = new TransformGroup();
+        characterTransform.Children.Add(characterScale);
+        characterTransform.Children.Add(characterTranslate);
+        var character = new Canvas
         {
-            Width = 30,
-            Height = 2,
-            Fill = SignalLimeBrush,
-            RadiusX = 1,
-            RadiusY = 1,
-            HorizontalAlignment = WpfHorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
-        });
-        result.Children.Add(new WpfRectangle
+            Width = 32,
+            Height = 32,
+            RenderTransform = characterTransform,
+            RenderTransformOrigin = new WpfPoint(0.5, 0.5),
+            IsHitTestVisible = false
+        };
+
+        var antenna = new Line
         {
-            Width = 2,
-            Height = 30,
+            X1 = 9,
+            Y1 = 5,
+            X2 = 7,
+            Y2 = 1.5,
+            Stroke = StudioTealBrush,
+            StrokeThickness = 1.5,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round
+        };
+        character.Children.Add(antenna);
+        var antennaDot = new Ellipse
+        {
+            Width = 4,
+            Height = 4,
+            Fill = CoralBrush
+        };
+        Canvas.SetLeft(antennaDot, 5);
+        Canvas.SetTop(antennaDot, 0);
+        character.Children.Add(antennaDot);
+
+        character.Children.Add(new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse(
+                "M 4,7 C 4,3 7,2 11,2 L 17,3 C 21,4 23,7 22,10 " +
+                "C 22,13 20,15 17,16 L 16,19 L 13,16 L 9,16 " +
+                "C 5,16 3,13 3,10 C 3,9 3.4,8 4,7 Z"),
             Fill = SignalLimeBrush,
-            RadiusX = 1,
-            RadiusY = 1,
-            HorizontalAlignment = WpfHorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
+            Stroke = GraphiteBrush,
+            StrokeThickness = 1.5,
+            StrokeLineJoin = PenLineJoin.Round
         });
+
+        AddEye(character, left: 8, top: 7);
+        AddEye(character, left: 15, top: 7.5);
+
+        character.Children.Add(new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse("M 10,13 C 12,14.5 14,14.5 16,13"),
+            Stroke = CoralBrush,
+            StrokeThickness = 1.5,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round
+        });
+
+        var twinkleScale = new ScaleTransform(0.6, 0.6);
+        var twinkle = new Ellipse
+        {
+            Width = 5,
+            Height = 5,
+            Fill = WarmWhiteBrush,
+            Stroke = StudioTealBrush,
+            StrokeThickness = 1,
+            HorizontalAlignment = WpfHorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 2, 2, 0),
+            Opacity = 0,
+            RenderTransform = twinkleScale,
+            RenderTransformOrigin = new WpfPoint(0.5, 0.5)
+        };
+
+        result.Children.Add(character);
         result.Children.Add(new Ellipse
         {
-            Width = 18,
-            Height = 18,
+            Width = 10,
+            Height = 10,
             Fill = GraphiteBrush,
-            Stroke = SignalLimeBrush,
-            StrokeThickness = 2,
+            Stroke = StudioTealBrush,
+            StrokeThickness = 1.5,
             HorizontalAlignment = WpfHorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         });
         result.Children.Add(new Ellipse
         {
-            Width = 7,
-            Height = 7,
+            Width = 4,
+            Height = 4,
             Fill = CoralBrush,
             Stroke = WarmWhiteBrush,
             StrokeThickness = 1,
             HorizontalAlignment = WpfHorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         });
+        result.Children.Add(twinkle);
 
-        return result;
+        return new ClickletVisual(
+            result,
+            character,
+            characterScale,
+            characterTranslate,
+            twinkle,
+            twinkleScale);
+    }
+
+    private static void AddEye(Canvas character, double left, double top)
+    {
+        var eye = new Ellipse
+        {
+            Width = 3.5,
+            Height = 4.5,
+            Fill = GraphiteBrush,
+            Stroke = WarmWhiteBrush,
+            StrokeThickness = 1
+        };
+        Canvas.SetLeft(eye, left);
+        Canvas.SetTop(eye, top);
+        character.Children.Add(eye);
     }
 
     private static SolidColorBrush CreateBrush(byte red, byte green, byte blue)
@@ -331,6 +423,7 @@ internal sealed class PointCueWindow : Window
         PositionWindow(motionWindowHandle, motionLayout, showWindow: true);
         currentCuePosition = motionEnd;
         StartPulse();
+        PlayLanding();
     }
 
     private void StartPulse()
@@ -354,6 +447,58 @@ internal sealed class PointCueWindow : Window
         pulseScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnimation);
         pulseScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnimation.Clone());
         pulse.BeginAnimation(OpacityProperty, opacityAnimation);
+
+        characterTranslate.BeginAnimation(
+            TranslateTransform.YProperty,
+            new DoubleAnimation(0, -1.2, new Duration(TimeSpan.FromMilliseconds(720)))
+            {
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+            });
+
+        var twinkleOpacity = new DoubleAnimationUsingKeyFrames
+        {
+            Duration = new Duration(TimeSpan.FromMilliseconds(1600)),
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+        twinkleOpacity.KeyFrames.Add(new DiscreteDoubleKeyFrame(0, KeyTime.FromPercent(0)));
+        twinkleOpacity.KeyFrames.Add(new EasingDoubleKeyFrame(0.9, KeyTime.FromPercent(0.16)));
+        twinkleOpacity.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromPercent(0.34)));
+        twinkleOpacity.KeyFrames.Add(new DiscreteDoubleKeyFrame(0, KeyTime.FromPercent(1)));
+        twinkle.BeginAnimation(OpacityProperty, twinkleOpacity);
+
+        var twinkleScaleAnimation = new DoubleAnimation(0.55, 1.15, TimeSpan.FromMilliseconds(260))
+        {
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        twinkleScale.BeginAnimation(ScaleTransform.ScaleXProperty, twinkleScaleAnimation);
+        twinkleScale.BeginAnimation(ScaleTransform.ScaleYProperty, twinkleScaleAnimation.Clone());
+    }
+
+    private void PlayLanding()
+    {
+        var landing = new DoubleAnimationUsingKeyFrames
+        {
+            Duration = new Duration(TimeSpan.FromMilliseconds(260))
+        };
+        landing.KeyFrames.Add(new EasingDoubleKeyFrame(
+            0.78,
+            KeyTime.FromTimeSpan(TimeSpan.Zero),
+            new CubicEase { EasingMode = EasingMode.EaseOut }));
+        landing.KeyFrames.Add(new EasingDoubleKeyFrame(
+            1.12,
+            KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120)),
+            new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.25 }));
+        landing.KeyFrames.Add(new EasingDoubleKeyFrame(
+            1,
+            KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(260)),
+            new CubicEase { EasingMode = EasingMode.EaseOut }));
+
+        characterScale.BeginAnimation(ScaleTransform.ScaleXProperty, landing);
+        characterScale.BeginAnimation(ScaleTransform.ScaleYProperty, landing.Clone());
     }
 
     private void SetStaticPulse()
@@ -374,7 +519,27 @@ internal sealed class PointCueWindow : Window
         pulse.BeginAnimation(OpacityProperty, null);
         pulseScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         pulseScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        characterScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        characterScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        characterTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+        twinkle.BeginAnimation(OpacityProperty, null);
+        twinkleScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        twinkleScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        characterScale.ScaleX = 1;
+        characterScale.ScaleY = 1;
+        characterTranslate.Y = 0;
+        twinkle.Opacity = 0;
+        twinkleScale.ScaleX = 0.6;
+        twinkleScale.ScaleY = 0.6;
     }
+
+    private readonly record struct ClickletVisual(
+        Grid Target,
+        Canvas Character,
+        ScaleTransform CharacterScale,
+        TranslateTransform CharacterTranslate,
+        Ellipse Twinkle,
+        ScaleTransform TwinkleScale);
 
     private static void PositionWindow(nint windowHandle, PointCueLayout layout, bool showWindow)
     {

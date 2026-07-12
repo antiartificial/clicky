@@ -50,6 +50,13 @@ public static class BrandText
     public const string SpeechOutputLabel = "Read answers aloud";
     public const string SpeechProviderLabel = "Voice provider";
     public const string VoiceLabel = "Voice";
+    public const string TestVoiceLabel = "Test voice";
+    public const string TestVoicePhrase = "Clicky voice check. I'm ready to guide you.";
+    public const string SpeechReady = "Voice is ready";
+    public const string SpeechPreparing = "Preparing voice";
+    public const string SpeechPlaying = "Speaking now";
+    public const string SpeechPlayed = "Voice played successfully";
+    public const string SpeechDisabled = "Turn on Read answers aloud to use voice";
     public const string ElevenLabsVoiceIdLabel = "ElevenLabs voice ID";
     public const string CaptureScopeLabel = "Capture scope";
     public const string ActiveWindowCaptureScope = "Active window";

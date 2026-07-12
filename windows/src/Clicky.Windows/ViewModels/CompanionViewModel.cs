@@ -65,6 +65,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     private string elevenLabsApiKeyStatusText = BrandText.ApiKeyNotStored;
     private VoiceInteraction? voiceInteraction;
     private CancellationTokenSource? speechCancellationSource;
+    private bool isSpeechOutputBusy;
+    private string speechOutputStatusText = BrandText.SpeechReady;
     private int disposeState;
 
     public CompanionViewModel(
@@ -95,6 +97,9 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         this.textToSpeechClient = textToSpeechClient;
         this.audioPlaybackService = audioPlaybackService;
         Settings = settings;
+        availableOpenAIModels = string.IsNullOrWhiteSpace(settings.OpenAIModelId)
+            ? [CompanionSettings.DefaultOpenAIModelId]
+            : [settings.OpenAIModelId];
 
         AdvanceSessionCommand = new RelayCommand(
             () => _ = BeginQuestionEntryAsync(),
@@ -126,6 +131,9 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         TestOpenAIConnectionCommand = new RelayCommand(
             () => _ = TestOpenAIConnectionAndObserveAsync(),
             CanTestOpenAIConnection);
+        TestSpeechOutputCommand = new RelayCommand(
+            () => _ = TestSpeechOutputAsync(),
+            CanTestSpeechOutput);
         ClearConversationCommand = new RelayCommand(
             ClearConversation,
             CanClearConversation);
@@ -465,6 +473,26 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref elevenLabsApiKeyStatusText, value);
     }
 
+    public bool IsSpeechOutputBusy
+    {
+        get => isSpeechOutputBusy;
+        private set
+        {
+            if (SetProperty(ref isSpeechOutputBusy, value))
+            {
+                TestSpeechOutputCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string SpeechOutputStatusText
+    {
+        get => Settings.SpeechOutputEnabled
+            ? speechOutputStatusText
+            : BrandText.SpeechDisabled;
+        private set => SetProperty(ref speechOutputStatusText, value);
+    }
+
     public RelayCommand AdvanceSessionCommand { get; }
 
     public RelayCommand SubmitQuestionCommand { get; }
@@ -485,6 +513,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
     public RelayCommand TestOpenAIConnectionCommand { get; }
 
+    public RelayCommand TestSpeechOutputCommand { get; }
+
     public RelayCommand ClearConversationCommand { get; }
 
     public void SetProviderApiKeyEntryAvailable(bool isAvailable) =>
@@ -500,7 +530,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
         if (isVisible && State == CompanionSessionState.Responding)
         {
-            CancelCurrentInteraction();
+            sessionCoordinator.ResetToIdle();
         }
 
         if (isVisible)
@@ -514,6 +544,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
         IsSettingsVisible = isVisible;
         AdvanceSessionCommand.RaiseCanExecuteChanged();
+        TestSpeechOutputCommand.RaiseCanExecuteChanged();
         OnPropertyChanged(nameof(CanSaveApiKey));
         RaiseProviderCommandCanExecuteChanged();
 
@@ -904,6 +935,16 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         }
     }
 
+    public async Task TestSpeechOutputAsync()
+    {
+        if (!CanTestSpeechOutput())
+        {
+            return;
+        }
+
+        await StartSpeechOutputAsync(BrandText.TestVoicePhrase);
+    }
+
     public Task BeginVoiceInteractionAsync()
     {
         if (dictationTranscriber is null || !CanBeginQuestion())
@@ -1120,7 +1161,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             _ = RefreshStoredConversationsAndObserveAsync();
             await PresentResultCueIfCurrentAsync(interactionId, result);
             ShowResponse(interactionId, BrandText.RespondingStatus, result.SpokenText);
-            StartSpeechOutput(result.SpokenText);
+            _ = StartSpeechOutputAsync(result.SpokenText);
             responseSucceeded = true;
         }
         catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
@@ -1166,7 +1207,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         return responseSucceeded;
     }
 
-    private void StartSpeechOutput(string responseText)
+    private Task StartSpeechOutputAsync(string responseText)
     {
         CancelSpeechOutput();
         if (!Settings.SpeechOutputEnabled ||
@@ -1174,13 +1215,16 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             audioPlaybackService is null ||
             string.IsNullOrWhiteSpace(responseText))
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        speechCancellationSource = new CancellationTokenSource();
-        _ = SynthesizeAndPlaySpeechAsync(
+        var cancellationSource = new CancellationTokenSource();
+        speechCancellationSource = cancellationSource;
+        IsSpeechOutputBusy = true;
+        SpeechOutputStatusText = BrandText.SpeechPreparing;
+        return SynthesizeAndPlaySpeechAsync(
             responseText,
-            speechCancellationSource,
+            cancellationSource,
             textToSpeechClient,
             audioPlaybackService);
     }
@@ -1195,7 +1239,9 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         {
             var speechAudio = await speechClient
                 .SynthesizeAsync(responseText, cancellationSource.Token);
+            SpeechOutputStatusText = BrandText.SpeechPlaying;
             await playbackService.PlayAsync(speechAudio, cancellationSource.Token);
+            SpeechOutputStatusText = BrandText.SpeechPlayed;
         }
         catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
         {
@@ -1204,8 +1250,16 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         catch (Exception exception) when (
             exception is SpeechSynthesisException or AudioPlaybackException)
         {
+            SpeechOutputStatusText = DescribeSpeechFailure(exception);
             System.Diagnostics.Trace.TraceWarning(
                 "Clicky speech output was skipped: {0}",
+                exception.Message);
+        }
+        catch (Exception exception)
+        {
+            SpeechOutputStatusText = "Voice failed unexpectedly. Try Test voice again.";
+            System.Diagnostics.Trace.TraceWarning(
+                "Clicky speech output failed unexpectedly: {0}",
                 exception.Message);
         }
         finally
@@ -1213,6 +1267,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             if (ReferenceEquals(speechCancellationSource, cancellationSource))
             {
                 speechCancellationSource = null;
+                IsSpeechOutputBusy = false;
             }
 
             cancellationSource.Dispose();
@@ -1225,6 +1280,45 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         speechCancellationSource = null;
         cancellationSource?.Cancel();
         audioPlaybackService?.Stop();
+        if (cancellationSource is not null)
+        {
+            IsSpeechOutputBusy = false;
+            SpeechOutputStatusText = BrandText.SpeechReady;
+        }
+    }
+
+    private bool CanTestSpeechOutput() =>
+        IsSettingsVisible &&
+        Settings.SpeechOutputEnabled &&
+        State == CompanionSessionState.Idle &&
+        !IsSpeechOutputBusy &&
+        textToSpeechClient is not null &&
+        audioPlaybackService is not null;
+
+    private static string DescribeSpeechFailure(Exception exception)
+    {
+        if (exception is AudioPlaybackException)
+        {
+            return "Windows couldn't play the generated WAV audio.";
+        }
+
+        var synthesisFailure = (SpeechSynthesisException)exception;
+        return synthesisFailure.FailureKind switch
+        {
+            SpeechSynthesisFailureKind.MissingApiKey =>
+                "Voice needs the selected provider's API key.",
+            SpeechSynthesisFailureKind.Authentication =>
+                "The voice provider rejected the stored API key.",
+            SpeechSynthesisFailureKind.Permission =>
+                "This API key cannot use the configured voice model.",
+            SpeechSynthesisFailureKind.RateLimited =>
+                "Voice is rate limited or the account needs API credits.",
+            SpeechSynthesisFailureKind.InvalidConfiguration =>
+                "Check the voice model and voice name.",
+            SpeechSynthesisFailureKind.Transport or SpeechSynthesisFailureKind.Server =>
+                "The voice provider is temporarily unavailable.",
+            _ => "The voice provider could not generate audio.",
+        };
     }
 
     private void EnsureVoiceProcessing(CompanionInteractionId interactionId)
@@ -1829,6 +1923,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         SubmitQuestionCommand.RaiseCanExecuteChanged();
         SubmitFollowUpCommand.RaiseCanExecuteChanged();
         CancelSessionCommand.RaiseCanExecuteChanged();
+        TestSpeechOutputCommand.RaiseCanExecuteChanged();
         ClearConversationCommand.RaiseCanExecuteChanged();
         OnPropertyChanged(nameof(CanSaveApiKey));
         RaiseProviderCommandCanExecuteChanged();
@@ -1843,9 +1938,23 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
         if (eventArgs.PropertyName == nameof(CompanionSettings.TextToSpeechProvider))
         {
+            CancelSpeechOutput();
             OnPropertyChanged(nameof(IsOpenAISpeechProvider));
             OnPropertyChanged(nameof(IsElevenLabsSpeechProvider));
             OnPropertyChanged(nameof(CanSaveElevenLabsApiKey));
+            SpeechOutputStatusText = BrandText.SpeechReady;
+            TestSpeechOutputCommand.RaiseCanExecuteChanged();
+        }
+
+        if (eventArgs.PropertyName == nameof(CompanionSettings.SpeechOutputEnabled))
+        {
+            if (!Settings.SpeechOutputEnabled)
+            {
+                CancelSpeechOutput();
+            }
+
+            OnPropertyChanged(nameof(SpeechOutputStatusText));
+            TestSpeechOutputCommand.RaiseCanExecuteChanged();
         }
 
         if (eventArgs.PropertyName is
