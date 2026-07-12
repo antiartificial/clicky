@@ -129,6 +129,19 @@ If you want the full technical breakdown, read `CLAUDE.md`. But here's the short
 
 **Menu bar app** (no dock icon) with two `NSPanel` windows — one for the control panel dropdown, one for the full-screen transparent cursor overlay. Push-to-talk streams audio over a websocket to AssemblyAI, sends the transcript + screenshot to Claude via streaming SSE, and plays the response through ElevenLabs TTS. Claude can embed `[POINT:x,y:label:screenN]` tags in its responses to make the cursor fly to specific UI elements across multiple monitors. All three APIs are proxied through a Cloudflare Worker.
 
+## Clicky for Windows
+
+The `windows/` subtree contains a separate .NET 10 WPF prototype of Clicky for Windows. It captures the active application before taking focus, accepts a typed question, and uses the screenshot and active-window title to guide one visible action at a time. Adobe apps, Visual Studio, and Rive are representative uses, not product-specific integrations.
+
+The Windows app is local-first BYOK with direct OpenAI, Anthropic, and Gemini chat, plus optional OpenAI or ElevenLabs speech output. Provider keys are stored in Windows Credential Manager; non-secret preferences and SQLite conversation history remain under the current user's local app data. It also includes adaptive screenshot optimization, streamed answer presentation, a tray shell, Clicky artwork, an animated non-activating startup splash, terminal `POINT` parsing, and a click-through cue overlay. The legacy Worker route remains for compatibility.
+
+It includes local Windows push-to-talk transcription and opt-in TTS, but not cloud transcription, Realtime/Live conversation mode, startup audio, multi-display capture, or an installer. No live API end-to-end verification is claimed. See [`windows/README.md`](windows/README.md) for setup and commands, and [`windows/ARCHITECTURE.md`](windows/ARCHITECTURE.md) for the implementation design.
+
+```powershell
+dotnet build .\windows\Clicky.Windows.sln
+dotnet test .\windows\Clicky.Windows.sln
+```
+
 ## Project structure
 
 ```
@@ -142,6 +155,9 @@ leanring-buddy/          # Swift source (yes, the typo stays)
   BuddyDictation*.swift     # Push-to-talk pipeline
 worker/                  # Cloudflare Worker proxy
   src/index.ts              # Three routes: /chat, /tts, /transcribe-token
+windows/                 # Clicky .NET 10 WPF prototype
+  src/Clicky.Windows/       # App, capture, provider clients, overlay, splash, and tray shell
+  tests/Clicky.Windows.Tests/ # Windows unit tests and local HTTP/SSE fixtures
 CLAUDE.md                # Full architecture doc (agents read this)
 ```
 
