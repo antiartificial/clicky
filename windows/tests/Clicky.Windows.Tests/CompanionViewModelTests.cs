@@ -79,6 +79,10 @@ public sealed class CompanionViewModelTests
         Assert.AreEqual("Open Solution Explorer.", viewModel.ResponseText);
         Assert.AreEqual(new DesktopPoint(400, 300), viewModel.LastMappedDesktopPoint);
         Assert.AreEqual("solution explorer", viewModel.LastInteractionResult?.TargetLabel);
+        Assert.IsTrue(viewModel.ConversationTurns.Single().HasInteractionTarget);
+        Assert.AreEqual(
+            new DesktopPoint(400, 300),
+            viewModel.ConversationTurns.Single().MappedDesktopPoint);
         CollectionAssert.AreEqual(
             new[] { "hide", "show:400,300:solution explorer" },
             presenter.Calls);
@@ -86,15 +90,92 @@ public sealed class CompanionViewModelTests
     }
 
     [TestMethod]
+    public async Task ReplayPointCueAsync_HidesAndRefliesToConversationTarget()
+    {
+        var presenter = new FakePointCuePresenter();
+        var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) =>
+                Stream("Press the visible button. [POINT:220,180:press me]")),
+            presenter);
+
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "Where is Press me?";
+        await viewModel.SubmitQuestionAsync();
+        var turn = viewModel.ConversationTurns.Single();
+
+        await viewModel.ReplayPointCueAsync(turn);
+
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "hide",
+                "show:220,180:press me",
+                "hide",
+                "show:220,180:press me",
+            },
+            presenter.Calls);
+    }
+
+    [TestMethod]
+    public async Task ReplayPointCueAsync_DoesNotOverrideNewerInteraction()
+    {
+        var presenter = new FakePointCuePresenter();
+        var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) =>
+                Stream("Press the visible button. [POINT:220,180:press me]")),
+            presenter);
+
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "Where is Press me?";
+        await viewModel.SubmitQuestionAsync();
+        var replay = viewModel.ReplayPointCueAsync(viewModel.ConversationTurns.Single());
+        await Task.Delay(20);
+
+        await viewModel.BeginQuestionEntryAsync();
+        await replay;
+
+        Assert.AreEqual(
+            1,
+            presenter.Calls.Count(call => call.StartsWith("show:", StringComparison.Ordinal)));
+        Assert.AreEqual("hide", presenter.Calls[^1]);
+    }
+
+    [TestMethod]
+    public async Task IdenticalPointNoneTurn_DoesNotInheritEarlierTarget()
+    {
+        var requestCount = 0;
+        var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) => ++requestCount == 1
+                ? Stream("Press the visible button. [POINT:220,180:press me]")
+                : Stream("Press the visible button. [POINT:none]")));
+
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "Where is Press me?";
+        await viewModel.SubmitQuestionAsync();
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "Where is Press me?";
+        await viewModel.SubmitQuestionAsync();
+
+        Assert.HasCount(2, viewModel.ConversationTurns);
+        Assert.IsTrue(viewModel.ConversationTurns[0].HasInteractionTarget);
+        Assert.IsFalse(viewModel.ConversationTurns[1].HasInteractionTarget);
+    }
+
+    [TestMethod]
     public async Task SuccessfulAnswer_WhenSpeechEnabled_SynthesizesAndPlaysSpokenText()
     {
         var speechClient = new FakeTextToSpeechClient();
         var playbackService = new FakeAudioPlaybackService();
+        var presenter = new FakePointCuePresenter();
         var settings = new CompanionSettings { SpeechOutputEnabled = true };
         var viewModel = CreateViewModel(
             new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
             new FakeWorkerClient((_, _) =>
                 Stream("Open Solution Explorer. [POINT:400,300:solution explorer]")),
+            pointCuePresenter: presenter,
             settings: settings,
             textToSpeechClient: speechClient,
             audioPlaybackService: playbackService);
@@ -109,6 +190,7 @@ public sealed class CompanionViewModelTests
         Assert.AreEqual("Open Solution Explorer.", speechClient.LastText);
         Assert.AreEqual(1, playbackService.PlayCalls);
         Assert.AreEqual(BrandText.SpeechPlayed, viewModel.SpeechOutputStatusText);
+        Assert.AreEqual("update:400,300:solution explorer", presenter.Calls[^1]);
     }
 
     [TestMethod]
@@ -296,6 +378,8 @@ public sealed class CompanionViewModelTests
         Assert.HasCount(2, viewModel.ConversationTurns);
         Assert.AreEqual("What do I do next?", viewModel.ConversationTurns[1].UserText);
         Assert.AreEqual("Right-click the project.", viewModel.ConversationTurns[1].AssistantText);
+        Assert.IsTrue(viewModel.ConversationTurns[0].HasInteractionTarget);
+        Assert.IsTrue(viewModel.ConversationTurns[1].HasInteractionTarget);
         Assert.AreEqual(CompanionSessionState.Responding, viewModel.State);
     }
 

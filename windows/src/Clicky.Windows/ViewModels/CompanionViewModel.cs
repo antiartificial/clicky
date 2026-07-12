@@ -20,7 +20,7 @@ namespace Clicky.Windows.ViewModels;
 
 public sealed class CompanionViewModel : ObservableObject, IDisposable
 {
-    private const double CompactWindowHeight = 190;
+    private const double CompactWindowHeight = 206;
     private const double SettingsWindowHeight = 680;
     private const double ConversationWindowHeight = 590;
 
@@ -67,6 +67,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? speechCancellationSource;
     private bool isSpeechOutputBusy;
     private string speechOutputStatusText = BrandText.SpeechReady;
+    private long cuePresentationGeneration;
     private int disposeState;
 
     public CompanionViewModel(
@@ -134,6 +135,9 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         TestSpeechOutputCommand = new RelayCommand(
             () => _ = TestSpeechOutputAsync(),
             CanTestSpeechOutput);
+        ReplayPointCueCommand = new RelayCommand<TutorConversationTurn>(
+            turn => _ = ReplayPointCueAsync(turn),
+            turn => turn.HasInteractionTarget);
         ClearConversationCommand = new RelayCommand(
             ClearConversation,
             CanClearConversation);
@@ -514,6 +518,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     public RelayCommand TestOpenAIConnectionCommand { get; }
 
     public RelayCommand TestSpeechOutputCommand { get; }
+
+    public RelayCommand<TutorConversationTurn> ReplayPointCueCommand { get; }
 
     public RelayCommand ClearConversationCommand { get; }
 
@@ -945,6 +951,50 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         await StartSpeechOutputAsync(BrandText.TestVoicePhrase);
     }
 
+    public async Task ReplayPointCueAsync(TutorConversationTurn turn)
+    {
+        ArgumentNullException.ThrowIfNull(turn);
+        if (turn.MappedDesktopPoint is not { } mappedPoint)
+        {
+            return;
+        }
+
+        var expectedInteractionId = CurrentInteractionId;
+        var replayGeneration = Interlocked.Increment(ref cuePresentationGeneration);
+
+        await cueGate.WaitAsync();
+        try
+        {
+            await pointCuePresenter.HideAsync();
+        }
+        finally
+        {
+            cueGate.Release();
+        }
+
+        await Task.Delay(90);
+
+        if (Volatile.Read(ref cuePresentationGeneration) != replayGeneration ||
+            CurrentInteractionId != expectedInteractionId)
+        {
+            return;
+        }
+
+        await cueGate.WaitAsync();
+        try
+        {
+            if (Volatile.Read(ref cuePresentationGeneration) == replayGeneration &&
+                CurrentInteractionId == expectedInteractionId)
+            {
+                await pointCuePresenter.ShowAsync(mappedPoint, turn.TargetLabel);
+            }
+        }
+        finally
+        {
+            cueGate.Release();
+        }
+    }
+
     public Task BeginVoiceInteractionAsync()
     {
         if (dictationTranscriber is null || !CanBeginQuestion())
@@ -1157,11 +1207,11 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(SelectedStoredConversation));
             OnPropertyChanged(nameof(CanContinueActiveConversation));
             SubmitFollowUpCommand.RaiseCanExecuteChanged();
-            RefreshConversationTurns();
+            RefreshConversationTurns(result);
             _ = RefreshStoredConversationsAndObserveAsync();
             await PresentResultCueIfCurrentAsync(interactionId, result);
             ShowResponse(interactionId, BrandText.RespondingStatus, result.SpokenText);
-            _ = StartSpeechOutputAsync(result.SpokenText);
+            _ = StartSpeechOutputAsync(result.SpokenText, interactionId, result);
             responseSucceeded = true;
         }
         catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
@@ -1207,7 +1257,10 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         return responseSucceeded;
     }
 
-    private Task StartSpeechOutputAsync(string responseText)
+    private Task StartSpeechOutputAsync(
+        string responseText,
+        CompanionInteractionId? interactionId = null,
+        TutorInteractionResult? interactionResult = null)
     {
         CancelSpeechOutput();
         if (!Settings.SpeechOutputEnabled ||
@@ -1226,19 +1279,27 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             responseText,
             cancellationSource,
             textToSpeechClient,
-            audioPlaybackService);
+            audioPlaybackService,
+            interactionId,
+            interactionResult);
     }
 
     private async Task SynthesizeAndPlaySpeechAsync(
         string responseText,
         CancellationTokenSource cancellationSource,
         ITextToSpeechClient speechClient,
-        IAudioPlaybackService playbackService)
+        IAudioPlaybackService playbackService,
+        CompanionInteractionId? interactionId,
+        TutorInteractionResult? interactionResult)
     {
         try
         {
             var speechAudio = await speechClient
                 .SynthesizeAsync(responseText, cancellationSource.Token);
+            await RefreshCueForNarrationIfCurrentAsync(
+                interactionId,
+                interactionResult,
+                cancellationSource.Token);
             SpeechOutputStatusText = BrandText.SpeechPlaying;
             await playbackService.PlayAsync(speechAudio, cancellationSource.Token);
             SpeechOutputStatusText = BrandText.SpeechPlayed;
@@ -1271,6 +1332,36 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             }
 
             cancellationSource.Dispose();
+        }
+    }
+
+    private async Task RefreshCueForNarrationIfCurrentAsync(
+        CompanionInteractionId? interactionId,
+        TutorInteractionResult? interactionResult,
+        CancellationToken cancellationToken)
+    {
+        if (interactionId is not { } currentInteractionId ||
+            interactionResult?.MappedDesktopPoint is not { } mappedPoint ||
+            !IsCurrent(currentInteractionId))
+        {
+            return;
+        }
+
+        await cueGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (IsCurrent(currentInteractionId))
+            {
+                Interlocked.Increment(ref cuePresentationGeneration);
+                await pointCuePresenter.UpdateAsync(
+                    mappedPoint,
+                    interactionResult.TargetLabel,
+                    cancellationToken);
+            }
+        }
+        finally
+        {
+            cueGate.Release();
         }
     }
 
@@ -1643,8 +1734,45 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         ActiveQuestionText = string.Empty;
     }
 
-    private void RefreshConversationTurns() =>
-        ConversationTurns = tutorInteractionService.GetConversationHistorySnapshot();
+    private void RefreshConversationTurns(TutorInteractionResult? latestResult = null)
+    {
+        var refreshedTurns = tutorInteractionService.GetConversationHistorySnapshot().ToArray();
+        var previousTurnsByText = ConversationTurns
+            .GroupBy(turn => (turn.UserText, turn.AssistantText))
+            .ToDictionary(
+                group => group.Key,
+                group => new Queue<TutorConversationTurn>(group));
+
+        for (var turnIndex = 0; turnIndex < refreshedTurns.Length; turnIndex++)
+        {
+            var refreshedTurn = refreshedTurns[turnIndex];
+            var turnKey = (refreshedTurn.UserText, refreshedTurn.AssistantText);
+            if (previousTurnsByText.TryGetValue(turnKey, out var matchingTurns) &&
+                matchingTurns.Count > 0)
+            {
+                var previousTurn = matchingTurns.Dequeue();
+                if (previousTurn.HasInteractionTarget)
+                {
+                    refreshedTurns[turnIndex] = refreshedTurn with
+                    {
+                        MappedDesktopPoint = previousTurn.MappedDesktopPoint,
+                        TargetLabel = previousTurn.TargetLabel,
+                    };
+                }
+            }
+        }
+
+        if (latestResult?.MappedDesktopPoint is { } latestPoint && refreshedTurns.Length > 0)
+        {
+            refreshedTurns[^1] = refreshedTurns[^1] with
+            {
+                MappedDesktopPoint = latestPoint,
+                TargetLabel = latestResult.TargetLabel,
+            };
+        }
+
+        ConversationTurns = refreshedTurns;
+    }
 
     private async Task RefreshStoredConversationsAndObserveAsync()
     {
@@ -1839,6 +1967,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         await cueGate.WaitAsync();
         try
         {
+            Interlocked.Increment(ref cuePresentationGeneration);
             if (!IsCurrent(interactionId))
             {
                 return;
@@ -1864,6 +1993,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         await cueGate.WaitAsync();
         try
         {
+            Interlocked.Increment(ref cuePresentationGeneration);
             if (IsCurrent(interactionId))
             {
                 await pointCuePresenter.HideAsync();
@@ -1880,6 +2010,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         await cueGate.WaitAsync();
         try
         {
+            Interlocked.Increment(ref cuePresentationGeneration);
             await pointCuePresenter.HideAsync();
         }
         finally

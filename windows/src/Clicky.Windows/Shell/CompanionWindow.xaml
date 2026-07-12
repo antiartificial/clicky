@@ -1392,9 +1392,9 @@
                                 <Setter Property="TextTrimming" Value="None" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsConversationVisible}" Value="False">
-                                        <Setter Property="MaxHeight" Value="16" />
+                                        <Setter Property="MaxHeight" Value="30" />
                                         <Setter Property="Margin" Value="45,2,76,0" />
-                                        <Setter Property="TextWrapping" Value="NoWrap" />
+                                        <Setter Property="TextWrapping" Value="Wrap" />
                                         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                                     </DataTrigger>
                                 </Style.Triggers>
@@ -1677,6 +1677,28 @@
                                                                    TextWrapping="Wrap"
                                                                    Foreground="{StaticResource WarmWhiteBrush}"
                                                                    Text="{Binding AssistantText}" />
+                                                        <Button Margin="0,7,0,0"
+                                                                Padding="7,3"
+                                                                HorizontalAlignment="Left"
+                                                                Style="{StaticResource HeaderTextButtonStyle}"
+                                                                Command="{Binding DataContext.ReplayPointCueCommand, ElementName=RootWindow}"
+                                                                CommandParameter="{Binding}"
+                                                                ToolTip="{x:Static branding:BrandText.ShowMeTooltip}"
+                                                                AutomationProperties.Name="{x:Static branding:BrandText.ShowMeTooltip}"
+                                                                Visibility="{Binding HasInteractionTarget, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Margin="0,0,5,0"
+                                                                           VerticalAlignment="Center"
+                                                                           FontFamily="Segoe MDL2 Assets"
+                                                                           FontSize="12"
+                                                                           Foreground="{StaticResource CoralBrush}"
+                                                                           Text="&#xE81D;" />
+                                                                <TextBlock VerticalAlignment="Center"
+                                                                           FontSize="10"
+                                                                           FontWeight="SemiBold"
+                                                                           Text="{x:Static branding:BrandText.ShowMeLabel}" />
+                                                            </StackPanel>
+                                                        </Button>
                                                     </StackPanel>
                                                 </Border>
                                             </StackPanel>

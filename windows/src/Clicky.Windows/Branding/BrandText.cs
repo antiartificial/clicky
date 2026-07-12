@@ -20,6 +20,8 @@ public static class BrandText
     public const string FollowUpInputLabel = "Follow-up question about this screen";
     public const string FollowUpPlaceholder = "Ask a follow-up...";
     public const string SubmitFollowUpTooltip = "Send follow-up";
+    public const string ShowMeLabel = "Show me";
+    public const string ShowMeTooltip = "Bring Clicklet back to this control";
     public const string AiProviderLabel = "AI provider";
     public const string WorkerProviderLabel = "Worker";
     public const string AnthropicProviderLabel = "Anthropic";

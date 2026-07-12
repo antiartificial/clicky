@@ -52,8 +52,16 @@ public sealed class PointCueMotionPathCalculatorTests
             dpiScaleX: 1.5,
             dpiScaleY: 1.25);
 
-        Assert.AreEqual(476, result.X);
-        Assert.AreEqual(312.5, result.Y);
+        Assert.AreEqual(374, result.X);
+        Assert.AreEqual(367.5, result.Y);
+    }
+
+    [TestMethod]
+    public void PresenterOptions_KeepCueAvailableForNarrationAndReplay()
+    {
+        var options = new PointCuePresenterOptions();
+
+        Assert.AreEqual(TimeSpan.FromSeconds(15), options.AutoHideAfter);
     }
 
     [TestMethod]

@@ -4,13 +4,13 @@ internal readonly record struct PointCueMotionPoint(double X, double Y);
 
 internal static class PointCueMotionPathCalculator
 {
-    internal const double RevealOffsetXDip = -16;
-    internal const double RevealOffsetYDip = 10;
+    internal const double RevealOffsetXDip = -84;
+    internal const double RevealOffsetYDip = 54;
 
     private const double BendRatio = 0.12;
     private const double MaximumBendPixels = 20;
-    private const double MinimumDurationMilliseconds = 180;
-    private const double MaximumDurationMilliseconds = 320;
+    private const double MinimumDurationMilliseconds = 280;
+    private const double MaximumDurationMilliseconds = 560;
 
     internal static PointCueMotionPoint Calculate(
         PointCueMotionPoint start,
