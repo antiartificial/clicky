@@ -89,11 +89,45 @@ public sealed class PointCueMotionPathCalculatorTests
     }
 
     [TestMethod]
+    public void ResolveStart_UsesConfiguredOriginForANewCue()
+    {
+        var destination = new PointCueMotionPoint(500, 300);
+        var origin = new PointCueMotionPoint(1800, 980);
+
+        var result = PointCueMotionPathCalculator.ResolveStart(
+            destination,
+            currentPosition: new PointCueMotionPoint(400, 250),
+            configuredOrigin: origin,
+            wasVisible: false,
+            dpiScaleX: 1,
+            dpiScaleY: 1);
+
+        Assert.AreEqual(origin, result);
+    }
+
+    [TestMethod]
+    public void ResolveStart_PreservesVisibleCueContinuityBeforeConfiguredOrigin()
+    {
+        var current = new PointCueMotionPoint(400, 250);
+
+        var result = PointCueMotionPathCalculator.ResolveStart(
+            destination: new PointCueMotionPoint(500, 300),
+            currentPosition: current,
+            configuredOrigin: new PointCueMotionPoint(1800, 980),
+            wasVisible: true,
+            dpiScaleX: 1,
+            dpiScaleY: 1);
+
+        Assert.AreEqual(current, result);
+    }
+
+    [TestMethod]
     public void PresenterOptions_KeepCueAvailableForNarrationAndReplay()
     {
         var options = new PointCuePresenterOptions();
 
         Assert.AreEqual(TimeSpan.FromSeconds(15), options.AutoHideAfter);
+        Assert.IsNull(options.MotionOrigin());
     }
 
     [TestMethod]

@@ -107,6 +107,7 @@ public partial class App : System.Windows.Application
             new PointCuePresenterOptions
             {
                 MotionEnabled = () => CompanionMotionPolicy.IsEnabled(settings),
+                MotionOrigin = () => companionWindow?.GetPointCueOrigin(),
             });
         dictationTranscriber = new SystemSpeechDictationTranscriber();
         companionViewModel = new CompanionViewModel(

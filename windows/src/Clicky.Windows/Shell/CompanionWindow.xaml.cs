@@ -7,6 +7,7 @@ using System.Windows.Interop;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Clicky.Windows.Providers;
+using Clicky.Windows.Pointing;
 using Clicky.Windows.ViewModels;
 
 namespace Clicky.Windows.Shell;
@@ -72,6 +73,19 @@ public partial class CompanionWindow : Window
     {
         isPermanentCloseRequested = true;
         Close();
+    }
+
+    public DesktopPoint? GetPointCueOrigin()
+    {
+        if (!IsVisible || !IsLoaded || ActualWidth <= 0 || ActualHeight <= 0)
+        {
+            return null;
+        }
+
+        var origin = PointToScreen(new System.Windows.Point(
+            Math.Max(0, ActualWidth - 24),
+            Math.Max(0, ActualHeight - 24)));
+        return new DesktopPoint(origin.X, origin.Y);
     }
 
     private void HandleSourceInitialized(object? sender, EventArgs eventArgs)

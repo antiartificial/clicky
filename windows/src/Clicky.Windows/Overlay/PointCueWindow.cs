@@ -13,15 +13,16 @@ using WpfColor = System.Windows.Media.Color;
 using WpfFontFamily = System.Windows.Media.FontFamily;
 using WpfHorizontalAlignment = System.Windows.HorizontalAlignment;
 using WpfPoint = System.Windows.Point;
+using Clicky.Windows.Pointing;
 
 namespace Clicky.Windows.Overlay;
 
 internal sealed class PointCueWindow : Window
 {
     private static readonly TimeSpan ArrivalOrbitDuration = TimeSpan.FromMilliseconds(360);
-    private static readonly System.Windows.Media.Brush SignalLimeBrush = CreateBrush(0xB8, 0xE3, 0x4A);
+    private static readonly System.Windows.Media.Brush GuideBlueBrush = CreateBrush(0x3D, 0x8B, 0xFF);
+    private static readonly System.Windows.Media.Brush GuideCyanBrush = CreateBrush(0x78, 0xDC, 0xFF);
     private static readonly System.Windows.Media.Brush CoralBrush = CreateBrush(0xFF, 0x6B, 0x5F);
-    private static readonly System.Windows.Media.Brush StudioTealBrush = CreateBrush(0x16, 0x8A, 0x7B);
     private static readonly System.Windows.Media.Brush WarmWhiteBrush = CreateBrush(0xF4, 0xF1, 0xE8);
     private static readonly System.Windows.Media.Brush GraphiteBrush = CreateBrush(0xF0, 0x17, 0x19, 0x1D);
     private static readonly System.Windows.Media.Brush GraphiteLineBrush = CreateBrush(0xF0, 0x3A, 0x3E, 0x45);
@@ -78,9 +79,9 @@ internal sealed class PointCueWindow : Window
         {
             Width = 28,
             Height = 28,
-            Stroke = SignalLimeBrush,
-            StrokeThickness = 1.5,
-            Opacity = 0.25,
+            Stroke = GuideCyanBrush,
+            StrokeThickness = 2,
+            Opacity = 0.42,
             RenderTransform = pulseScale,
             RenderTransformOrigin = new WpfPoint(0.5, 0.5)
         };
@@ -127,7 +128,11 @@ internal sealed class PointCueWindow : Window
         motionTimer.Tick += MotionTimerTick;
     }
 
-    public void ShowCue(PointCueLayout layout, string? label, bool motionEnabled)
+    public void ShowCue(
+        PointCueLayout layout,
+        string? label,
+        bool motionEnabled,
+        DesktopPoint? motionOrigin = null)
     {
         var windowHandle = new WindowInteropHelper(this).EnsureHandle();
         var wasVisible = IsVisible;
@@ -145,12 +150,16 @@ internal sealed class PointCueWindow : Window
         ApplyLabel(layout, label);
 
         var destination = GetCuePosition(layout);
-        var start = wasVisible && currentCuePosition is { } currentPosition
-            ? currentPosition
-            : PointCueMotionPathCalculator.CreateRevealStart(
-                destination,
-                layout.DpiScaleX,
-                layout.DpiScaleY);
+        var configuredOrigin = motionOrigin is { } origin
+            ? new PointCueMotionPoint(origin.X, origin.Y)
+            : (PointCueMotionPoint?)null;
+        var start = PointCueMotionPathCalculator.ResolveStart(
+            destination,
+            currentCuePosition,
+            configuredOrigin,
+            wasVisible,
+            layout.DpiScaleX,
+            layout.DpiScaleY);
 
         if (!motionEnabled || start == destination)
         {
@@ -271,7 +280,7 @@ internal sealed class PointCueWindow : Window
             Y1 = 5,
             X2 = 7,
             Y2 = 1.5,
-            Stroke = StudioTealBrush,
+            Stroke = GuideCyanBrush,
             StrokeThickness = 1.5,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round
@@ -293,7 +302,7 @@ internal sealed class PointCueWindow : Window
                 "M 4,7 C 4,3 7,2 11,2 L 17,3 C 21,4 23,7 22,10 " +
                 "C 22,13 20,15 17,16 L 16,19 L 13,16 L 9,16 " +
                 "C 5,16 3,13 3,10 C 3,9 3.4,8 4,7 Z"),
-            Fill = SignalLimeBrush,
+            Fill = GuideBlueBrush,
             Stroke = GraphiteBrush,
             StrokeThickness = 1.5,
             StrokeLineJoin = PenLineJoin.Round
@@ -317,7 +326,7 @@ internal sealed class PointCueWindow : Window
             Width = 5,
             Height = 5,
             Fill = WarmWhiteBrush,
-            Stroke = StudioTealBrush,
+            Stroke = GuideCyanBrush,
             StrokeThickness = 1,
             HorizontalAlignment = WpfHorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Top,
@@ -333,7 +342,7 @@ internal sealed class PointCueWindow : Window
             Width = 10,
             Height = 10,
             Fill = GraphiteBrush,
-            Stroke = StudioTealBrush,
+            Stroke = GuideCyanBrush,
             StrokeThickness = 1.5,
             HorizontalAlignment = WpfHorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center

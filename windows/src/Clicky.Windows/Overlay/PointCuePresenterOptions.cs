@@ -8,6 +8,8 @@ public sealed record PointCuePresenterOptions
 
     public Func<bool> MotionEnabled { get; init; } = static () => true;
 
+    public Func<Clicky.Windows.Pointing.DesktopPoint?> MotionOrigin { get; init; } = static () => null;
+
     internal bool ShouldUseMotion()
     {
         return !ReducedMotion && MotionEnabled();

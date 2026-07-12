@@ -46,6 +46,11 @@ public sealed class PointCuePresenter : IPointCuePresenter
         {
             throw new ArgumentException("Motion-enabled callback cannot be null.", nameof(options));
         }
+
+        if (this.options.MotionOrigin is null)
+        {
+            throw new ArgumentException("Motion-origin callback cannot be null.", nameof(options));
+        }
     }
 
     public Task ShowAsync(
@@ -107,7 +112,11 @@ public sealed class PointCuePresenter : IPointCuePresenter
         var monitor = monitorProvider.GetMonitorContaining(point);
         var layout = PointCueLayoutCalculator.Calculate(point, monitor, label is not null);
         window ??= new PointCueWindow();
-        window.ShowCue(layout, label, options.ShouldUseMotion());
+        window.ShowCue(
+            layout,
+            label,
+            options.ShouldUseMotion(),
+            options.MotionOrigin());
 
         var generation = ++displayGeneration;
         if (options.AutoHideAfter is { } autoHideAfter)

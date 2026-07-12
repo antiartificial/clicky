@@ -121,6 +121,30 @@ internal static class PointCueMotionPathCalculator
             destination.Y + (RevealOffsetYDip * dpiScaleY));
     }
 
+    internal static PointCueMotionPoint ResolveStart(
+        PointCueMotionPoint destination,
+        PointCueMotionPoint? currentPosition,
+        PointCueMotionPoint? configuredOrigin,
+        bool wasVisible,
+        double dpiScaleX,
+        double dpiScaleY)
+    {
+        ValidatePoint(destination, nameof(destination));
+        if (wasVisible && currentPosition is { } current)
+        {
+            ValidatePoint(current, nameof(currentPosition));
+            return current;
+        }
+
+        if (configuredOrigin is { } origin)
+        {
+            ValidatePoint(origin, nameof(configuredOrigin));
+            return origin;
+        }
+
+        return CreateRevealStart(destination, dpiScaleX, dpiScaleY);
+    }
+
     internal static TimeSpan CalculateDuration(
         PointCueMotionPoint start,
         PointCueMotionPoint end)
