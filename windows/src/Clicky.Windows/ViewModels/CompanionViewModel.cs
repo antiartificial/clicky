@@ -1246,8 +1246,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             await HideCueIfCurrentAsync(interactionId);
             ShowResponse(
                 interactionId,
-                "Couldn't answer",
-                "The selected AI provider didn't answer. Check its settings and try again.");
+                BrandText.RequestFailedStatus,
+                "Clicky couldn't complete this request. Try again; if it repeats, test the selected provider in Settings.");
         }
         finally
         {
@@ -1826,9 +1826,10 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
         if (exception.ErrorKind == AnthropicProviderErrorKind.Incomplete)
         {
-            return (
-                BrandText.ProviderBusyStatus,
-                "Anthropic reached its response limit. Try a narrower question or raise the token limit.");
+            return DescribeUnsuccessfulRequest(
+                "Anthropic",
+                "Try a narrower question or raise the response token limit.",
+                exception.ErrorType);
         }
 
         return exception.StatusCode switch
@@ -1836,13 +1837,16 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             HttpStatusCode.Unauthorized =>
                 (BrandText.ProviderSetupStatus, "Anthropic rejected the stored key. Replace it in settings."),
             HttpStatusCode.Forbidden =>
-                (BrandText.ProviderBusyStatus, "This Anthropic key cannot use the selected model."),
+                (BrandText.ProviderSetupStatus, "This Anthropic key cannot use the selected model. Choose another model in Settings."),
             HttpStatusCode.TooManyRequests =>
                 (BrandText.ProviderBusyStatus, "Anthropic is rate limiting this key. Give it a moment and try again."),
             >= HttpStatusCode.InternalServerError =>
                 (BrandText.ProviderBusyStatus, "Anthropic is having trouble right now. Try again shortly."),
             _ =>
-                (BrandText.ProviderBusyStatus, "Anthropic could not complete that request. Check the model and try again."),
+                DescribeUnsuccessfulRequest(
+                    "Anthropic",
+                    "Try again; if it repeats, choose another model in Settings.",
+                    exception.ErrorType),
         };
     }
 
@@ -1851,9 +1855,10 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     {
         if (exception.ProviderCode is "insufficient_quota" or "billing_not_active")
         {
-            return (
-                BrandText.ProviderBusyStatus,
-                "This OpenAI API account has no available credits. Check API billing, then try again.");
+            return DescribeUnsuccessfulRequest(
+                "OpenAI",
+                "This API account has no available credits. Check API billing, then try again.",
+                exception.ProviderCode);
         }
 
         if (exception.ProviderCode is "model_not_found" or "invalid_model")
@@ -1870,6 +1875,21 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
                 "The stored OpenAI key contains an unsupported character. Paste it again and replace the saved key.");
         }
 
+        if (exception.ProviderCode is "server_error" or "overloaded_error")
+        {
+            return (
+                BrandText.ProviderBusyStatus,
+                "OpenAI is having trouble right now. Try again shortly.");
+        }
+
+        if (exception.ProviderCode is "context_length_exceeded" or "max_output_tokens")
+        {
+            return DescribeUnsuccessfulRequest(
+                "OpenAI",
+                "Try a shorter or more focused question.",
+                exception.ProviderCode);
+        }
+
         return exception.FailureKind switch
         {
             OpenAiProviderFailureKind.MissingApiKey or
@@ -1878,22 +1898,27 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             OpenAiProviderFailureKind.Authentication =>
                 (BrandText.ProviderSetupStatus, "OpenAI rejected the stored key. Replace it in settings."),
             OpenAiProviderFailureKind.Permission =>
-                (BrandText.ProviderBusyStatus, "This OpenAI key cannot use the selected model."),
+                (BrandText.ProviderSetupStatus, "This OpenAI key cannot use the selected model. Choose another model in Settings."),
             OpenAiProviderFailureKind.RateLimited =>
                 (BrandText.ProviderBusyStatus, "OpenAI is rate limiting this key. Give it a moment and try again."),
             OpenAiProviderFailureKind.Server or OpenAiProviderFailureKind.Transport =>
                 (BrandText.ProviderBusyStatus, "OpenAI is having trouble right now. Try again shortly."),
             OpenAiProviderFailureKind.Refusal =>
                 ("Couldn't answer", "OpenAI declined that request. Try asking in a different way."),
-            _ =>
-                (BrandText.ProviderBusyStatus, DescribeUnknownOpenAIFailure(exception)),
+            OpenAiProviderFailureKind.RequestRejected or
+            OpenAiProviderFailureKind.StreamProtocol or
+            OpenAiProviderFailureKind.Failed or
+            OpenAiProviderFailureKind.Incomplete =>
+                DescribeUnsuccessfulRequest(
+                    "OpenAI",
+                    "Try again; if it repeats, test the connection or choose another model in Settings.",
+                    exception.ProviderCode),
+            _ => DescribeUnsuccessfulRequest(
+                "OpenAI",
+                "Check the model and API billing, then try again.",
+                exception.ProviderCode),
         };
     }
-
-    private static string DescribeUnknownOpenAIFailure(OpenAiProviderException exception) =>
-        string.IsNullOrWhiteSpace(exception.ProviderCode)
-            ? "OpenAI could not complete that request. Check the model and API billing, then try again."
-            : $"OpenAI rejected that request ({exception.ProviderCode}). Check the model and API billing.";
 
     private static (string Status, string Detail) DescribeGeminiFailure(
         GeminiProviderException exception) => exception.FailureKind switch
@@ -1904,7 +1929,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             GeminiProviderFailureKind.Authentication =>
                 (BrandText.ProviderSetupStatus, "Gemini rejected the stored key. Replace it in settings."),
             GeminiProviderFailureKind.Permission =>
-                (BrandText.ProviderBusyStatus, "This Gemini key cannot use the selected model."),
+                (BrandText.ProviderSetupStatus, "This Gemini key cannot use the selected model. Choose another model in Settings."),
             GeminiProviderFailureKind.RateLimited =>
                 (BrandText.ProviderBusyStatus, "Gemini is rate limiting this key. Give it a moment and try again."),
             GeminiProviderFailureKind.Safety =>
@@ -1912,8 +1937,24 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             GeminiProviderFailureKind.Server or GeminiProviderFailureKind.Transport =>
                 (BrandText.ProviderBusyStatus, "Gemini is having trouble right now. Try again shortly."),
             _ =>
-                (BrandText.ProviderBusyStatus, "Gemini could not complete that request. Check the model and try again."),
+                DescribeUnsuccessfulRequest(
+                    "Gemini",
+                    "Try again; if it repeats, choose another model in Settings.",
+                    exception.ProviderCode),
         };
+
+    private static (string Status, string Detail) DescribeUnsuccessfulRequest(
+        string providerName,
+        string nextStep,
+        string? providerCode = null)
+    {
+        var diagnostic = string.IsNullOrWhiteSpace(providerCode)
+            ? string.Empty
+            : $" Error code: {providerCode}.";
+        return (
+            BrandText.RequestFailedStatus,
+            $"{providerName} couldn't complete this request. {nextStep}{diagnostic}");
+    }
 
     private async Task ShowFailureAsync(CompanionInteractionId interactionId, string message)
     {

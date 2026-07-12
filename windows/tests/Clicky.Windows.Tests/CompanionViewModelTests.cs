@@ -616,6 +616,62 @@ public sealed class CompanionViewModelTests
     }
 
     [TestMethod]
+    public async Task OpenAIInvalidValueFailure_ShowsGenericActionAndSafeCode()
+    {
+        const string providerBody = "raw-provider-secret-body";
+        var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) => OpenAIFailure(
+                OpenAiProviderFailureKind.Failed,
+                providerBody,
+                providerCode: "invalid_value")));
+
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "Help";
+        await viewModel.SubmitQuestionAsync();
+
+        Assert.AreEqual(BrandText.RequestFailedStatus, viewModel.StatusText);
+        StringAssert.Contains(viewModel.ResponseText, "couldn't complete this request");
+        StringAssert.Contains(viewModel.ResponseText, "try again", StringComparison.OrdinalIgnoreCase);
+        StringAssert.Contains(viewModel.ResponseText, "Error code: invalid_value");
+        Assert.IsFalse(viewModel.ResponseText.Contains(providerBody, StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task OpenAIServerFailure_RemainsTemporarilyUnavailable()
+    {
+        var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) => OpenAIFailure(
+                OpenAiProviderFailureKind.Server,
+                "safe failure")));
+
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "Help";
+        await viewModel.SubmitQuestionAsync();
+
+        Assert.AreEqual(BrandText.ProviderBusyStatus, viewModel.StatusText);
+        StringAssert.Contains(viewModel.ResponseText, "Try again shortly");
+    }
+
+    [TestMethod]
+    public async Task UnexpectedProviderFailure_ShowsGenericRecoveryWithoutRawDetail()
+    {
+        const string rawDetail = "private internal failure detail";
+        var viewModel = CreateViewModel(
+            new FakeCaptureService((_) => Task.FromResult(CreateCapture())),
+            new FakeWorkerClient((_, _) => UnexpectedFailure(rawDetail)));
+
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "Help";
+        await viewModel.SubmitQuestionAsync();
+
+        Assert.AreEqual(BrandText.RequestFailedStatus, viewModel.StatusText);
+        StringAssert.Contains(viewModel.ResponseText, "test the selected provider in Settings");
+        Assert.IsFalse(viewModel.ResponseText.Contains(rawDetail, StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public async Task BeginVoiceInteractionAsync_StartsDictationAndCapturesWithoutRequestingFocus()
     {
         var calls = new List<string>();
@@ -963,10 +1019,30 @@ public sealed class CompanionViewModelTests
     private static async IAsyncEnumerable<string> OpenAIAuthenticationFailure(
         string providerBody)
     {
+        await foreach (var delta in OpenAIFailure(
+                           OpenAiProviderFailureKind.Authentication,
+                           providerBody))
+        {
+            yield return delta;
+        }
+    }
+
+    private static async IAsyncEnumerable<string> OpenAIFailure(
+        OpenAiProviderFailureKind failureKind,
+        string message,
+        string? providerCode = null)
+    {
         await Task.Yield();
-        throw new OpenAiProviderException(
-            OpenAiProviderFailureKind.Authentication,
-            providerBody);
+        throw new OpenAiProviderException(failureKind, message, providerCode: providerCode);
+#pragma warning disable CS0162
+        yield break;
+#pragma warning restore CS0162
+    }
+
+    private static async IAsyncEnumerable<string> UnexpectedFailure(string message)
+    {
+        await Task.Yield();
+        throw new InvalidOperationException(message);
 #pragma warning disable CS0162
         yield break;
 #pragma warning restore CS0162

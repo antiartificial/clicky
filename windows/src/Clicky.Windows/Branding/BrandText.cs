@@ -71,6 +71,7 @@ public static class BrandText
     public const string WorkerSetupStatus = "Worker URL needed";
     public const string ProviderSetupStatus = "Provider setup needed";
     public const string ProviderBusyStatus = "Provider unavailable";
+    public const string RequestFailedStatus = "Request didn't go through";
     public const string IdleDetail = "Ask about the active app";
     public const string ListeningDetail = "Capturing the active app";
     public const string ProcessingDetail = "Reading the screen";
