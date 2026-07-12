@@ -632,9 +632,13 @@ public sealed class CompanionViewModelTests
 
         Assert.AreEqual(BrandText.RequestFailedStatus, viewModel.StatusText);
         StringAssert.Contains(viewModel.ResponseText, "couldn't complete this request");
-        StringAssert.Contains(viewModel.ResponseText, "try again", StringComparison.OrdinalIgnoreCase);
+        StringAssert.Contains(viewModel.ResponseText, "selected model", StringComparison.OrdinalIgnoreCase);
         StringAssert.Contains(viewModel.ResponseText, "Error code: invalid_value");
         Assert.IsFalse(viewModel.ResponseText.Contains(providerBody, StringComparison.Ordinal));
+        Assert.IsTrue(viewModel.HasResponseDetails);
+        Assert.IsTrue(viewModel.CanOpenResponseDetails);
+        Assert.IsFalse(viewModel.CanRetryLastRequest);
+        Assert.AreEqual("Help", viewModel.ResponseDetailsQuestion);
     }
 
     [TestMethod]
@@ -652,6 +656,36 @@ public sealed class CompanionViewModelTests
 
         Assert.AreEqual(BrandText.ProviderBusyStatus, viewModel.StatusText);
         StringAssert.Contains(viewModel.ResponseText, "Try again shortly");
+        Assert.IsTrue(viewModel.HasResponseDetails);
+        Assert.IsTrue(viewModel.CanRetryLastRequest);
+    }
+
+    [TestMethod]
+    public async Task RetryLastRequestAsync_ReusesCaptureAndRecoversTransientFailure()
+    {
+        var requestCount = 0;
+        var captureCount = 0;
+        var viewModel = CreateViewModel(
+            new FakeCaptureService((_) =>
+            {
+                captureCount++;
+                return Task.FromResult(CreateCapture());
+            }),
+            new FakeWorkerClient((_, _) => ++requestCount == 1
+                ? OpenAIFailure(OpenAiProviderFailureKind.Server, "temporary")
+                : Stream("Recovered answer. [POINT:none]")));
+
+        await viewModel.BeginQuestionEntryAsync();
+        viewModel.Question = "Help";
+        await viewModel.SubmitQuestionAsync();
+        await viewModel.RetryLastRequestAsync();
+
+        Assert.AreEqual(2, requestCount);
+        Assert.AreEqual(1, captureCount);
+        Assert.AreEqual("Recovered answer.", viewModel.ResponseText);
+        Assert.IsFalse(viewModel.HasResponseDetails);
+        Assert.IsFalse(viewModel.CanRetryLastRequest);
+        Assert.HasCount(1, viewModel.ConversationTurns);
     }
 
     [TestMethod]

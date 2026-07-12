@@ -17,6 +17,10 @@ public static class BrandText
     public const string EmptyConversation = "No conversation selected.";
     public const string OpenConversationLabel = "Open chat";
     public const string OpenConversationTooltip = "Open this conversation";
+    public const string OpenResponseDetailsTooltip = "View the full response";
+    public const string RequestDetailsHeading = "Request details";
+    public const string RetryRequestTooltip = "Retry this request";
+    public const string RetryRequestLabel = "Retry";
     public const string FollowUpInputLabel = "Follow-up question about this screen";
     public const string FollowUpPlaceholder = "Ask a follow-up...";
     public const string SubmitFollowUpTooltip = "Send follow-up";

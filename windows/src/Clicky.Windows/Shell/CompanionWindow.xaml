@@ -1405,38 +1405,39 @@
                         </TextBlock.RenderTransform>
                     </TextBlock>
 
-                    <Button Grid.Row="1"
-                            Padding="6,2"
-                            HorizontalAlignment="Right"
-                            VerticalAlignment="Top"
-                            Click="OpenConversationButton_Click"
-                            ToolTip="{x:Static branding:BrandText.OpenConversationTooltip}"
-                            AutomationProperties.Name="{x:Static branding:BrandText.OpenConversationTooltip}">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource HeaderTextButtonStyle}">
-                                <Setter Property="Visibility" Value="Collapsed" />
+                    <StackPanel Grid.Row="1"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Orientation="Horizontal">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
                                 <Style.Triggers>
-                                    <MultiDataTrigger>
-                                        <MultiDataTrigger.Conditions>
-                                            <Condition Binding="{Binding HasConversation}" Value="True" />
-                                            <Condition Binding="{Binding IsConversationVisible}" Value="False" />
-                                        </MultiDataTrigger.Conditions>
-                                        <Setter Property="Visibility" Value="Visible" />
-                                    </MultiDataTrigger>
+                                    <DataTrigger Binding="{Binding IsConversationVisible}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
                                 </Style.Triggers>
                             </Style>
-                        </Button.Style>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Margin="0,0,4,0"
-                                       VerticalAlignment="Center"
-                                       FontFamily="Segoe MDL2 Assets"
-                                       FontSize="11"
+                        </StackPanel.Style>
+                        <Button Margin="0,0,4,0"
+                                Style="{StaticResource IconButtonStyle}"
+                                Command="{Binding RetryLastRequestCommand}"
+                                ToolTip="{x:Static branding:BrandText.RetryRequestTooltip}"
+                                AutomationProperties.Name="{x:Static branding:BrandText.RetryRequestTooltip}"
+                                Visibility="{Binding CanRetryLastRequest, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock FontFamily="Segoe MDL2 Assets"
+                                       FontSize="13"
+                                       Text="&#xE72C;" />
+                        </Button>
+                        <Button Style="{StaticResource IconButtonStyle}"
+                                Click="OpenConversationButton_Click"
+                                ToolTip="{x:Static branding:BrandText.OpenResponseDetailsTooltip}"
+                                AutomationProperties.Name="{x:Static branding:BrandText.OpenResponseDetailsTooltip}"
+                                Visibility="{Binding CanOpenResponseDetails, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock FontFamily="Segoe MDL2 Assets"
+                                       FontSize="13"
                                        Text="&#xE8BD;" />
-                            <TextBlock VerticalAlignment="Center"
-                                       FontSize="10"
-                                       Text="{x:Static branding:BrandText.OpenConversationLabel}" />
-                        </StackPanel>
-                    </Button>
+                        </Button>
+                    </StackPanel>
                 </Grid>
 
                 <Button Grid.Column="3"
@@ -1633,6 +1634,78 @@
                                   VerticalScrollBarVisibility="Auto">
                         <Grid>
                             <StackPanel>
+                                <Border MaxWidth="320"
+                                        Margin="0,0,0,12"
+                                        Padding="10,8"
+                                        HorizontalAlignment="Stretch"
+                                        Background="{StaticResource GraphiteRaisedBrush}"
+                                        BorderBrush="{StaticResource CoralBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Visibility="{Binding HasResponseDetails, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <StackPanel>
+                                        <TextBlock FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource CoralBrush}"
+                                                   Text="{x:Static branding:BrandText.RequestDetailsHeading}" />
+                                        <TextBlock Margin="0,3,0,0"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource WarmWhiteBrush}"
+                                                   Text="{Binding StatusText}" />
+                                        <Border Margin="0,7,0,0"
+                                                Padding="8,6"
+                                                Background="{StaticResource StudioTealBrush}"
+                                                BorderBrush="{StaticResource StudioTealBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="5"
+                                                Visibility="{Binding HasResponseDetailsQuestion, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <StackPanel>
+                                                <TextBlock FontSize="9"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource GraphiteBrush}"
+                                                           Opacity="0.7"
+                                                           Text="You" />
+                                                <TextBlock Margin="0,2,0,0"
+                                                           FontSize="11"
+                                                           TextWrapping="Wrap"
+                                                           Foreground="{StaticResource GraphiteBrush}"
+                                                           Text="{Binding ResponseDetailsQuestion}" />
+                                            </StackPanel>
+                                        </Border>
+                                        <TextBox Margin="0,5,0,0"
+                                                 Padding="0"
+                                                 Background="Transparent"
+                                                 BorderThickness="0"
+                                                 Foreground="{StaticResource WarmWhiteBrush}"
+                                                 FontSize="12"
+                                                 TextWrapping="Wrap"
+                                                 AcceptsReturn="True"
+                                                 IsReadOnly="True"
+                                                 Text="{Binding ResponseText, Mode=OneWay}" />
+                                        <Button Margin="0,8,0,0"
+                                                Padding="7,3"
+                                                HorizontalAlignment="Left"
+                                                Style="{StaticResource HeaderTextButtonStyle}"
+                                                Command="{Binding RetryLastRequestCommand}"
+                                                ToolTip="{x:Static branding:BrandText.RetryRequestTooltip}"
+                                                AutomationProperties.Name="{x:Static branding:BrandText.RetryRequestTooltip}"
+                                                Visibility="{Binding CanRetryLastRequest, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Margin="0,0,5,0"
+                                                           VerticalAlignment="Center"
+                                                           FontFamily="Segoe MDL2 Assets"
+                                                           FontSize="12"
+                                                           Text="&#xE72C;" />
+                                                <TextBlock VerticalAlignment="Center"
+                                                           FontSize="10"
+                                                           FontWeight="SemiBold"
+                                                           Text="{x:Static branding:BrandText.RetryRequestLabel}" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </Border>
+
                                 <ItemsControl ItemsSource="{Binding ConversationTurns}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>

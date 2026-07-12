@@ -15,6 +15,9 @@ public sealed class OpenAiResponsesClient : IWorkerClient, IDisposable
 {
     private static readonly Uri ResponsesEndpoint = new("https://api.openai.com/v1/responses");
     private const int MaximumErrorDocumentBytes = 16 * 1024;
+    private const int MaximumSendAttempts = 2;
+    private static readonly TimeSpan DefaultRetryDelay = TimeSpan.FromMilliseconds(180);
+    private static readonly TimeSpan MaximumRetryDelay = TimeSpan.FromSeconds(2);
 
     private readonly HttpClient httpClient;
     private readonly IProviderApiKeyStore apiKeyStore;
@@ -97,24 +100,15 @@ public sealed class OpenAiResponsesClient : IWorkerClient, IDisposable
         }
 
         var payloadBytes = JsonSerializer.SerializeToUtf8Bytes(BuildRequestPayload(request, model));
-        using var requestMessage = new HttpRequestMessage(HttpMethod.Post, ResponsesEndpoint);
-        requestMessage.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-        requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-        apiKey = null;
-
-        requestMessage.Content = new ByteArrayContent(payloadBytes);
-        requestMessage.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json")
-        {
-            CharSet = "utf-8",
-        };
 
         HttpResponseMessage response;
         try
         {
-            response = await httpClient.SendAsync(
-                requestMessage,
-                HttpCompletionOption.ResponseHeadersRead,
+            response = await SendWithRetryAsync(
+                payloadBytes,
+                apiKey,
                 cancellationToken).ConfigureAwait(false);
+            apiKey = null;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -192,6 +186,70 @@ public sealed class OpenAiResponsesClient : IWorkerClient, IDisposable
                 }
             }
         }
+    }
+
+    private async Task<HttpResponseMessage> SendWithRetryAsync(
+        byte[] payloadBytes,
+        string apiKey,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; attempt <= MaximumSendAttempts; attempt++)
+        {
+            using var requestMessage = CreateRequestMessage(payloadBytes, apiKey);
+            var response = await httpClient.SendAsync(
+                requestMessage,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken).ConfigureAwait(false);
+
+            if (attempt < MaximumSendAttempts && IsTransientStatus(response.StatusCode))
+            {
+                var retryDelay = GetRetryDelay(response);
+                response.Dispose();
+                await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
+            return response;
+        }
+
+        throw new InvalidOperationException("The OpenAI send retry loop ended unexpectedly.");
+    }
+
+    private static HttpRequestMessage CreateRequestMessage(
+        byte[] payloadBytes,
+        string apiKey)
+    {
+        var requestMessage = new HttpRequestMessage(HttpMethod.Post, ResponsesEndpoint);
+        requestMessage.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+        requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        requestMessage.Content = new ByteArrayContent(payloadBytes);
+        requestMessage.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json")
+        {
+            CharSet = "utf-8",
+        };
+        return requestMessage;
+    }
+
+    private static bool IsTransientStatus(HttpStatusCode statusCode) =>
+        statusCode is
+            HttpStatusCode.RequestTimeout or
+            HttpStatusCode.TooManyRequests or
+            HttpStatusCode.BadGateway or
+            HttpStatusCode.ServiceUnavailable or
+            HttpStatusCode.GatewayTimeout;
+
+    private static TimeSpan GetRetryDelay(HttpResponseMessage response)
+    {
+        var retryAfter = response.Headers.RetryAfter;
+        var requestedDelay = retryAfter?.Delta ??
+            (retryAfter?.Date is { } retryDate
+                ? retryDate - DateTimeOffset.UtcNow
+                : DefaultRetryDelay);
+        return requestedDelay <= TimeSpan.Zero
+            ? DefaultRetryDelay
+            : requestedDelay > MaximumRetryDelay
+                ? MaximumRetryDelay
+                : requestedDelay;
     }
 
     public void Dispose()

@@ -135,6 +135,27 @@ public sealed class OpenAiResponsesClientTests
     }
 
     [TestMethod]
+    public async Task StreamChatAsync_TransientHttpFailureRetriesOnceBeforeStreaming()
+    {
+        var handler = new SequencedResponseHandler(
+            (HttpStatusCode.ServiceUnavailable, "{\"error\":{\"code\":\"server_error\"}}"),
+            (HttpStatusCode.OK,
+                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"recovered\"}\n\n" +
+                "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n"));
+        using var httpClient = new HttpClient(handler);
+        using var client = new OpenAiResponsesClient(
+            httpClient,
+            new FakeApiKeyStore(ApiKey),
+            new CompanionSettings());
+
+        var result = await CollectAsync(client.StreamChatAsync(
+            new WorkerChatRequest("ignored", "system", "prompt")));
+
+        CollectionAssert.AreEqual(new[] { "recovered" }, result);
+        Assert.AreEqual(2, handler.SendCalls);
+    }
+
+    [TestMethod]
     [DataRow(HttpStatusCode.Forbidden, OpenAiProviderFailureKind.Permission)]
     [DataRow(HttpStatusCode.TooManyRequests, OpenAiProviderFailureKind.RateLimited)]
     [DataRow(HttpStatusCode.BadRequest, OpenAiProviderFailureKind.RequestRejected)]
@@ -423,6 +444,31 @@ public sealed class OpenAiResponsesClientTests
             HttpRequestMessage request,
             CancellationToken cancellationToken) =>
             throw new HttpRequestException(message);
+    }
+
+    private sealed class SequencedResponseHandler(
+        params (HttpStatusCode StatusCode, string Body)[] responses) : HttpMessageHandler
+    {
+        private int responseIndex;
+
+        public int SendCalls { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            SendCalls++;
+            var responseDefinition = responses[Math.Min(responseIndex++, responses.Length - 1)];
+            var response = new HttpResponseMessage(responseDefinition.StatusCode)
+            {
+                Content = new StringContent(responseDefinition.Body, Encoding.UTF8),
+            };
+            response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                responseDefinition.StatusCode == HttpStatusCode.OK
+                    ? "text/event-stream"
+                    : "application/json");
+            return Task.FromResult(response);
+        }
     }
 
     private sealed class WaitingHandler : HttpMessageHandler

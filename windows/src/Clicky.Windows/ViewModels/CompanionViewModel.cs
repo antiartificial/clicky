@@ -68,6 +68,9 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
     private bool isSpeechOutputBusy;
     private string speechOutputStatusText = BrandText.SpeechReady;
     private long cuePresentationGeneration;
+    private RetryableTutorRequest? retryableRequest;
+    private bool hasResponseDetails;
+    private string responseDetailsQuestion = string.Empty;
     private int disposeState;
 
     public CompanionViewModel(
@@ -141,6 +144,9 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         ClearConversationCommand = new RelayCommand(
             ClearConversation,
             CanClearConversation);
+        RetryLastRequestCommand = new RelayCommand(
+            () => _ = RetryLastRequestAsync(),
+            () => CanRetryLastRequest);
 
         sessionCoordinator.StateChanged += HandleSessionStateChanged;
         Settings.PropertyChanged += HandleSettingsPropertyChanged;
@@ -168,6 +174,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             {
                 OnPropertyChanged(nameof(HasConversation));
                 OnPropertyChanged(nameof(IsConversationEmpty));
+                OnPropertyChanged(nameof(CanOpenResponseDetails));
                 ClearConversationCommand.RaiseCanExecuteChanged();
             }
         }
@@ -218,7 +225,40 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
     public bool HasActiveQuestion => !string.IsNullOrWhiteSpace(ActiveQuestionText);
 
-    public bool IsConversationEmpty => !HasConversation && !HasActiveQuestion;
+    public bool IsConversationEmpty => !HasConversation && !HasActiveQuestion && !HasResponseDetails;
+
+    public bool HasResponseDetails
+    {
+        get => hasResponseDetails;
+        private set
+        {
+            if (SetProperty(ref hasResponseDetails, value))
+            {
+                OnPropertyChanged(nameof(IsConversationEmpty));
+                OnPropertyChanged(nameof(CanOpenResponseDetails));
+            }
+        }
+    }
+
+    public bool CanOpenResponseDetails => HasConversation || HasResponseDetails;
+
+    public string ResponseDetailsQuestion
+    {
+        get => responseDetailsQuestion;
+        private set
+        {
+            if (SetProperty(ref responseDetailsQuestion, value))
+            {
+                OnPropertyChanged(nameof(HasResponseDetailsQuestion));
+            }
+        }
+    }
+
+    public bool HasResponseDetailsQuestion =>
+        !string.IsNullOrWhiteSpace(ResponseDetailsQuestion);
+
+    public bool CanRetryLastRequest =>
+        retryableRequest is not null && State == CompanionSessionState.Responding;
 
     public bool IsMotionEffectivelyEnabled => CompanionMotionPolicy.IsEnabled(Settings);
 
@@ -523,6 +563,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
     public RelayCommand ClearConversationCommand { get; }
 
+    public RelayCommand RetryLastRequestCommand { get; }
+
     public void SetProviderApiKeyEntryAvailable(bool isAvailable) =>
         HasProviderApiKeyEntry = isAvailable;
 
@@ -647,6 +689,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         RefreshConversationTurns();
         ClearActiveQuestion();
         ResponseText = string.Empty;
+        ClearRequestRecovery();
         if (State == CompanionSessionState.Responding)
         {
             sessionCoordinator.ResetToIdle();
@@ -786,6 +829,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         ClearActiveQuestion();
         Question = string.Empty;
         ResponseText = string.Empty;
+        ClearRequestRecovery();
         responseStatusText = BrandText.RespondingStatus;
         IsQuestionEntryVisible = false;
         preparedInteraction = null;
@@ -874,6 +918,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         CancelInteractionToken();
         ClearActiveQuestion();
         ResponseText = string.Empty;
+        ClearRequestRecovery();
         responseStatusText = BrandText.RespondingStatus;
         FollowUpQuestion = string.Empty;
 
@@ -1007,6 +1052,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         ClearActiveQuestion();
         Question = string.Empty;
         ResponseText = string.Empty;
+        ClearRequestRecovery();
         responseStatusText = BrandText.RespondingStatus;
         IsQuestionEntryVisible = false;
         preparedInteraction = null;
@@ -1075,6 +1121,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         IsQuestionEntryVisible = false;
         Question = string.Empty;
         ResponseText = string.Empty;
+        ClearRequestRecovery();
         sessionCoordinator.ResetToIdle();
         CompactStateRequested?.Invoke(this, EventArgs.Empty);
         await HideCueAsync();
@@ -1122,7 +1169,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
                 ShowResponse(
                     interaction.InteractionId,
                     BrandText.EmptyDictationStatus,
-                    BrandText.EmptyDictationDetail);
+                    BrandText.EmptyDictationDetail,
+                    isFailure: true);
                 return;
             }
 
@@ -1144,7 +1192,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             ShowResponse(
                 interaction.InteractionId,
                 BrandText.DictationSetupStatus,
-                BrandText.DictationSetupDetail);
+                BrandText.DictationSetupDetail,
+                isFailure: true);
         }
         catch (Exception)
         {
@@ -1153,7 +1202,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             ShowResponse(
                 interaction.InteractionId,
                 "Voice question missed",
-                "I couldn't capture that voice question. Keep the app visible and try again.");
+                "I couldn't capture that voice question. Keep the app visible and try again.",
+                isFailure: true);
         }
         finally
         {
@@ -1178,6 +1228,7 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         CancellationTokenSource cancellationSource)
     {
         var responseSucceeded = false;
+        ClearRequestRecovery();
         try
         {
             var streamedResponseText = new System.Text.StringBuilder();
@@ -1221,33 +1272,45 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         catch (WorkerConfigurationException exception)
         {
             await HideCueIfCurrentAsync(interactionId);
-            ShowResponse(interactionId, BrandText.WorkerSetupStatus, exception.Message);
+            ShowResponse(
+                interactionId,
+                BrandText.WorkerSetupStatus,
+                exception.Message,
+                isFailure: true);
         }
         catch (AnthropicProviderException exception)
         {
             await HideCueIfCurrentAsync(interactionId);
+            SetRetryableRequest(
+                ShouldOfferRetry(exception) ? new(preparation, prompt) : null);
             var (status, detail) = DescribeAnthropicFailure(exception);
-            ShowResponse(interactionId, status, detail);
+            ShowResponse(interactionId, status, detail, isFailure: true);
         }
         catch (OpenAiProviderException exception)
         {
             await HideCueIfCurrentAsync(interactionId);
+            SetRetryableRequest(
+                ShouldOfferRetry(exception) ? new(preparation, prompt) : null);
             var (status, detail) = DescribeOpenAIFailure(exception);
-            ShowResponse(interactionId, status, detail);
+            ShowResponse(interactionId, status, detail, isFailure: true);
         }
         catch (GeminiProviderException exception)
         {
             await HideCueIfCurrentAsync(interactionId);
+            SetRetryableRequest(
+                ShouldOfferRetry(exception) ? new(preparation, prompt) : null);
             var (status, detail) = DescribeGeminiFailure(exception);
-            ShowResponse(interactionId, status, detail);
+            ShowResponse(interactionId, status, detail, isFailure: true);
         }
         catch (Exception)
         {
             await HideCueIfCurrentAsync(interactionId);
+            SetRetryableRequest(new RetryableTutorRequest(preparation, prompt));
             ShowResponse(
                 interactionId,
                 BrandText.RequestFailedStatus,
-                "Clicky couldn't complete this request. Try again; if it repeats, test the selected provider in Settings.");
+                "Clicky couldn't complete this request. Try again; if it repeats, test the selected provider in Settings.",
+                isFailure: true);
         }
         finally
         {
@@ -1890,6 +1953,14 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
                 exception.ProviderCode);
         }
 
+        if (exception.ProviderCode == "invalid_value")
+        {
+            return DescribeUnsuccessfulRequest(
+                "OpenAI",
+                "The selected model or request format was rejected. Test the connection, then choose another model if it repeats.",
+                exception.ProviderCode);
+        }
+
         return exception.FailureKind switch
         {
             OpenAiProviderFailureKind.MissingApiKey or
@@ -1905,13 +1976,17 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
                 (BrandText.ProviderBusyStatus, "OpenAI is having trouble right now. Try again shortly."),
             OpenAiProviderFailureKind.Refusal =>
                 ("Couldn't answer", "OpenAI declined that request. Try asking in a different way."),
-            OpenAiProviderFailureKind.RequestRejected or
             OpenAiProviderFailureKind.StreamProtocol or
-            OpenAiProviderFailureKind.Failed or
             OpenAiProviderFailureKind.Incomplete =>
                 DescribeUnsuccessfulRequest(
                     "OpenAI",
                     "Try again; if it repeats, test the connection or choose another model in Settings.",
+                    exception.ProviderCode),
+            OpenAiProviderFailureKind.RequestRejected or
+            OpenAiProviderFailureKind.Failed =>
+                DescribeUnsuccessfulRequest(
+                    "OpenAI",
+                    "Review Request details, then test the connection or choose another model in Settings.",
                     exception.ProviderCode),
             _ => DescribeUnsuccessfulRequest(
                 "OpenAI",
@@ -1956,6 +2031,30 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
             $"{providerName} couldn't complete this request. {nextStep}{diagnostic}");
     }
 
+    private static bool ShouldOfferRetry(OpenAiProviderException exception) =>
+        exception.FailureKind is
+            OpenAiProviderFailureKind.RateLimited or
+            OpenAiProviderFailureKind.Server or
+            OpenAiProviderFailureKind.Transport or
+            OpenAiProviderFailureKind.StreamProtocol or
+            OpenAiProviderFailureKind.Incomplete ||
+        exception.FailureKind == OpenAiProviderFailureKind.Failed &&
+        exception.ProviderCode is "server_error" or "overloaded_error";
+
+    private static bool ShouldOfferRetry(GeminiProviderException exception) =>
+        exception.FailureKind is
+            GeminiProviderFailureKind.RateLimited or
+            GeminiProviderFailureKind.Server or
+            GeminiProviderFailureKind.Transport or
+            GeminiProviderFailureKind.StreamProtocol or
+            GeminiProviderFailureKind.Incomplete;
+
+    private static bool ShouldOfferRetry(AnthropicProviderException exception) =>
+        exception.StatusCode is HttpStatusCode.TooManyRequests or >= HttpStatusCode.InternalServerError ||
+        exception.ErrorKind is
+            AnthropicProviderErrorKind.StreamError or
+            AnthropicProviderErrorKind.PrematureEnd;
+
     private async Task ShowFailureAsync(CompanionInteractionId interactionId, string message)
     {
         if (!IsCurrent(interactionId))
@@ -1965,13 +2064,14 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
         await HideCueIfCurrentAsync(interactionId);
         _ = sessionCoordinator.BeginProcessing(interactionId);
-        ShowResponse(interactionId, "Capture missed", message);
+        ShowResponse(interactionId, "Capture missed", message, isFailure: true);
     }
 
     private void ShowResponse(
         CompanionInteractionId interactionId,
         string statusText,
-        string detail)
+        string detail,
+        bool isFailure = false)
     {
         if (!IsCurrent(interactionId) ||
             !sessionCoordinator.BeginResponding(interactionId))
@@ -1982,8 +2082,73 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         preparedInteraction = null;
         responseStatusText = statusText;
         ResponseText = detail.Trim();
+        HasResponseDetails = isFailure;
+        ResponseDetailsQuestion = isFailure ? ActiveQuestionText : string.Empty;
+        if (!isFailure)
+        {
+            SetRetryableRequest(null);
+        }
+
         OnPropertyChanged(nameof(StatusText));
         CompactStateRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    public async Task RetryLastRequestAsync()
+    {
+        var retryRequest = retryableRequest;
+        if (retryRequest is null || State != CompanionSessionState.Responding)
+        {
+            return;
+        }
+
+        CancelSpeechOutput();
+        CancelInteractionToken();
+        ClearActiveQuestion();
+        ResponseText = string.Empty;
+        responseStatusText = BrandText.RespondingStatus;
+        ClearRequestRecovery();
+
+        var interactionId = sessionCoordinator.BeginListening();
+        var cancellationSource = new CancellationTokenSource();
+        interactionCancellationSource = cancellationSource;
+        try
+        {
+            await HideCueIfCurrentAsync(interactionId);
+            var preparation = tutorInteractionService.PrepareFollowUp(retryRequest.Preparation);
+            if (!sessionCoordinator.BeginProcessing(interactionId))
+            {
+                return;
+            }
+
+            SetActiveQuestion(interactionId, retryRequest.Prompt);
+            await RespondWithPreparedInteractionAsync(
+                interactionId,
+                preparation,
+                retryRequest.Prompt,
+                cancellationSource);
+        }
+        finally
+        {
+            if (ReferenceEquals(interactionCancellationSource, cancellationSource))
+            {
+                interactionCancellationSource = null;
+                cancellationSource.Dispose();
+            }
+        }
+    }
+
+    private void ClearRequestRecovery()
+    {
+        HasResponseDetails = false;
+        ResponseDetailsQuestion = string.Empty;
+        SetRetryableRequest(null);
+    }
+
+    private void SetRetryableRequest(RetryableTutorRequest? request)
+    {
+        retryableRequest = request;
+        OnPropertyChanged(nameof(CanRetryLastRequest));
+        RetryLastRequestCommand.RaiseCanExecuteChanged();
     }
 
     private async Task ResetIfCurrentAsync(CompanionInteractionId interactionId)
@@ -2095,6 +2260,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
         SubmitQuestionCommand.RaiseCanExecuteChanged();
         SubmitFollowUpCommand.RaiseCanExecuteChanged();
         CancelSessionCommand.RaiseCanExecuteChanged();
+        RetryLastRequestCommand.RaiseCanExecuteChanged();
+        OnPropertyChanged(nameof(CanRetryLastRequest));
         TestSpeechOutputCommand.RaiseCanExecuteChanged();
         ClearConversationCommand.RaiseCanExecuteChanged();
         OnPropertyChanged(nameof(CanSaveApiKey));
@@ -2172,4 +2339,8 @@ public sealed class CompanionViewModel : ObservableObject, IDisposable
 
         public Task Workflow { get; set; } = Task.CompletedTask;
     }
+
+    private sealed record RetryableTutorRequest(
+        PreparedTutorInteraction Preparation,
+        string Prompt);
 }
